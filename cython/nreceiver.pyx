@@ -92,19 +92,21 @@ cdef class Receiver(object):
     def receive(self, const char* buffer, int size):
         cdef ipv5_header* header = <ipv5_header*>buffer
         cdef int end, num, sockfd
-        cdef uint32_t count
+        cdef uint16_t count
         cdef const ipv5_flow* flow
         cdef flow_destination* dest = NULL
         cdef flow_destination* nextdest
         cdef const char* first = buffer+sizeof(ipv5_header)
 
-        end = sizeof(ipv5_header)+header.count*sizeof(ipv5_flow)
+        if ntohs(header.version) != IPV5_VERSION: return # wrong version
+
+        count = ntohs(header.count)
+
+        end = sizeof(ipv5_header)+count*sizeof(ipv5_flow)
 
         if end > size: return # broken packet
 
-        count = 0
-
-        for num in range(header.count):
+        for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 
             self._checkrange(cython.address(dest), ntohl(flow.srcaddr), ntohl(flow.dstaddr), 

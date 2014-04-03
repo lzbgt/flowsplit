@@ -3,6 +3,8 @@
 
 #define PACKED __attribute__((__packed__))
 
+#define IPV5_VERSION  5
+
 typedef struct PACKED ipv5_header {
 	uint16_t version;			// NetFlow export format version number
 	uint16_t count;				// Number of flows exported in this packet (1-30)

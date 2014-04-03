@@ -32,7 +32,8 @@ cdef extern from "string.h" nogil:
     void *memcpy(void *restrict, const void *restrict, size_t) nogil
 
 cdef extern from "ipfix.h":
-
+    cdef int IPV5_VERSION
+    
     cdef struct ipv5_header:
         int version
         int count
