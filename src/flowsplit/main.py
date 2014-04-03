@@ -15,7 +15,12 @@ def main():
     
     args = parser.parse_args()
     
-    processor.process(args.input, args.mapfile)
+    try:
+        processor.process(args.input, args.mapfile)
+    except Exception, e:
+        print "Error: %s"%(str(e))
+    except KeyboardInterrupt:
+        print "exiting"
 
 if __name__ == '__main__':
     main()

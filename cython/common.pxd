@@ -8,192 +8,80 @@ cdef extern from "stdint.h":
 cdef extern from "netinet/in.h":
     int ntohs (int __netshort) nogil
     long ntohl (long __netlong) nogil
+    uint16_t htons (uint16_t __hostshort) nogil
+
+    cdef struct in_addr:
+        pass
+
+    cdef struct sockaddr_in:
+        int sin_family
+        int sin_port
+        in_addr sin_addr
+
+cdef extern from "sys/socket.h":
+    cdef int AF_INET
+    ssize_t sendto (int __fd, const void *__buf, size_t __n,
+                   int __flags, const sockaddr_in* __addr, size_t __addr_len) nogil
+
+cdef extern from "arpa/inet.h":
+    int inet_aton (const char *__cp, in_addr *__inp) nogil
 
 cdef extern from "string.h" nogil:
+    void *memset(void *s, int c, size_t n) nogil
     int memcmp (const void *A1, const void *A2, size_t SIZE) nogil
     void *memcpy(void *restrict, const void *restrict, size_t) nogil
 
-cdef extern from "zlib.h":
-    long adler32(long crc, const unsigned char * buf, int len) nogil
-
-cdef extern:
-    int _import_array()
-    int _import_umath()
-
 cdef extern from "ipfix.h":
-    cdef int MINDATA_SET_ID
 
-    cdef struct ipfix_header:
+    cdef struct ipv5_header:
         int version
-        int length
-        int exportTime
-        int sequenceNumber
-        int observationDomainId
+        int count
+        long sys_uptime
+        long unix_secs
+        long unix_nsecs
+        long flow_sequence
+        int engine_type
+        int engine_id
+        int sampling_interval
 
-    cdef struct ipfix_template_set_header:
-        int id
-        int length
-        
-    cdef struct ipfix_flow:
-        long bytes
-        long packets
-        int  protocol
-        int  tos
-        int  tcpflags
-        int  srcport
+    cdef struct ipv5_flow:
         long srcaddr
-        int  srcmask
-        long inpsnmp
-        int  dstport
         long dstaddr
-        int  dstmask
-        long outsnmp
         long nexthop
-        long srcas
-        long dstas
-        long last
+        int input
+        int output
+        long dPkts
+        long dOctets
         long first
-        long exporter
-
-    cdef struct ipfix_flow_tuple:
-        int  protocol
-        int  srcport
-        long srcaddr
-        int  dstport
-        long dstaddr
-
-    cdef struct ipfix_attributes:
-        int  tos
-        int  tcpflags
-        int  srcmask
-        long inpsnmp
-        int  dstmask
-        long outsnmp
-        long nexthop
-        long srcas
-        long dstas
+        long last
+        int srcport
+        int dstport
+        int pad1
+        int tcp_flags
+        int prot
+        int tos
+        int src_as
+        int dst_as
+        int src_mask
+        int dst_mask
+        int pad2
         
-    cdef struct ipfix_store_flow:
-        long                next
-        long                crc
-        ipfix_flow_tuple    flow
-        long                attrindex
-        int                 refcount
+    cdef struct flow_collection:
+        long         minaddr
+        long         maxaddr
+        long         packets
+        long         octets
+        long         flows
 
-    cdef struct ipfix_store_attributes:
-        long                next
-        long                crc
-        ipfix_attributes    attributes
-        
-    cdef struct ipfix_store_entry:
-        long    next
-        long    crc
-        char    data[0]
-        
-    cdef struct ipfix_store_counts:
-        long    flowindex
-        long    bytes
-        long    packets
-
-    cdef struct ipfix_app_tuple:
-        long    application
-        long    srcaddr
-        long    dstaddr
-        
-    cdef struct AppFlowValues:
-        long    crc
-        long    pos
-        
-    ctypedef int (*FlowAppCallback)(void* obj, const void* flow, AppFlowValues* vals) nogil
-        
-    cdef struct ipfix_app_flow:
-        long                next
-        long                crc
-        ipfix_app_tuple     app
-        long                inattrindex
-        long                outattrindex
-        long                refcount
-
-    cdef struct ipfix_apps_ports:
-        int     protocol
-        int     src
-        int     dst
-        
-    cdef struct ipfix_apps:
-        long                next
-        long                crc
-        ipfix_apps_ports    ports
-        int                 ticks
-        int                 activity
-        long                refcount
-        
-    cdef struct ipfix_query_info:
-        const void*                    entries
-        long                           count
-        const ipfix_store_flow*        flows
-        const ipfix_app_flow*          appflows
-        const ipfix_apps*              apps
-        const ipfix_store_attributes*  attrs
-        long                           stamp
-        long                           exporter
-        FlowAppCallback                callback
-        void*                          callobj
-
-    cdef struct ipfix_query_buf:
-        void*   data
-        long    count
-        long*   poses
-        long    mask
-
-    cdef struct ipfix_query_pos:
-        long    bufpos
-        long    curpos
-        long    countpos
-        long    oldest
-        long    totbytes
-        long    totpackets
-                
-    cdef struct AppFlowObjects:
-        void*   ticks
-        void*   apps
-        void*   flows
-
-    cdef struct AppsCollection:
-        long            next
+    cdef struct flow_destination:
+        sockaddr_in         addr
+        long                flowpacks
+        long                used
+        flow_destination*   next
     
-        AppFlowValues   values
-    
-        long            inbytes
-        long            inpackets
-        long            outbytes
-        long            outpackets
+    cdef struct flow_entry:    
+        flow_entry*         next
+        flow_entry*         first
+        flow_destination*   destaddr
+        flow_collection     coll
 
-    cdef struct ipfix_app_counts:
-        long            appindex
-        long            inbytes
-        long            inpackets
-        long            outbytes
-        long            outpackets
-
-    ctypedef uint32_t (*FlowAdd)(void* slf, const void* ptr, uint32_t index, int dsize) nogil
-    ctypedef uint32_t (*AppAdd)(void* slf, const void* ptr, uint32_t index, int dsize) nogil
-    ctypedef void     (*TimeAdd)(void* slf, uint32_t bts, uint32_t packets, uint32_t flowindex) nogil
-    
-    cdef struct ExporterSet:
-        long        exporter
-        FlowAdd     fadd
-        AppAdd      aadd
-        TimeAdd     tadd
-        void*       fobj
-        void*       aobj
-        void*       tobj
-
-    ctypedef void (*ipfix_collector_call_t)(const ipfix_query_buf* buf, 
-                                            const ipfix_query_info* info,
-                                            ipfix_query_pos* poses) nogil
-
-    ctypedef char* (*rep_callback_t)(void* data, size_t* size)
-    ctypedef size_t (*ipfix_collector_report_t)(const ipfix_query_pos* totals, int accending, 
-                                                const void* buf, uint32_t count, 
-                                                char* out, size_t maxsize, 
-                                                rep_callback_t callback, void* obj) nogil

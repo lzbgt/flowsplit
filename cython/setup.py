@@ -9,8 +9,7 @@ from distutils.core import setup, Extension
 from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 
-ext_modules = cythonize(["misc.pyx", "nreceiver.pyx", "collectors.pyx", 'timecollect.pyx', 
-                         "nquery.pyx", "napps.pyx"], extra_compile_args=['-DNPY_NO_DEPRECATION_WARNING'])
+ext_modules = cythonize(["nreceiver.pyx"], extra_compile_args=['-DNPY_NO_DEPRECATION_WARNING'])
 
 #ext_modules.extend([Extension('minutescoll',
 #                             sources=['../csrc/minutescoll.c'], 

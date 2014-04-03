@@ -1,197 +1,142 @@
 # distutils: language = c
 # distutils: include_dirs = ../includes
-# distutils: libraries = 
 
+## distutils: libraries = 
 #### distutils: library_dirs = 
 #### distutils: depends = 
 
 cimport cython
 
 from common cimport *
-from misc cimport logger, showflow
+
+cdef class Destination(object):
+    cdef flow_destination _dest
+    
+    def __init__(self, const char* dsthost, uint16_t port):
+        if port != 0 and _mkaddr(dsthost, port, cython.address(self._dest.addr)) == 0:
+            raise Exception("invalid address: %s:%d"%(dsthost, port))
+        self._dest.flowpacks = 0
+        self._dest.used = 0
+        self._dest.next = NULL
+
+cdef class Entry(object):
+    cdef Entry _parent
+    cdef _children
+    cdef flow_entry _fentry
+    cdef Destination _dest
+    
+    def __init__(self, uint32_t mn, uint32_t mx, Destination dest):
+        self._children = []
+        self._dest = dest
+        self._fentry.next = NULL
+        self._fentry.first = NULL
+        self._fentry.destaddr = cython.address(dest._dest)
+    
+    def attach(self, Entry ent):
+        self._attach(ent)
+        self._link(ent)
+
+    @cython.boundscheck(False)
+    cdef void _link(self, Entry ent):
+        ent._fentry.next = self._fentry.first
+        self._fentry.first = cython.address(ent._fentry)
+        
+    @cython.boundscheck(False)
+    cdef void _relink(self):
+        self._fentry.first = NULL
+        cdef Entry child
+        for child in self._children:
+            self._link(child)
+
+    @cython.boundscheck(False)
+    cdef void _attach(self, Entry ent):
+        ent._parent = self
+        self._children.append(ent)
+    
+    def detach(self):
+        cdef Entry parent = self._parent
+        cdef Entry child
+
+        self._parent = None
+        parent._children.remove(self)
+        for child in self._children:
+            parent._attach(child)    # attach my child to my parent
+        parent._relink()
+        self._children = []
+
+cdef class Root(Entry):
+
+    def __init__(self):
+        cdef Destination dest = Destination('', 0)
+        super(Root, self).__init__(0, 2**32-1, dest)
+
+@cython.boundscheck(False)
+cdef int _mkaddr(const char* ip, uint16_t port, sockaddr_in* addr):
+    memset(<char *>addr, 0, sizeof(sockaddr_in));
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+
+    return inet_aton(ip, cython.address(addr.sin_addr));
+
 
 cdef class Receiver(object):
-    cdef ExporterSet eset
+    cdef int _sockfd
+    cdef Root _root
 
-    cdef RawQuery first
-
-    def __cinit__(self, sourceset):
-        self.eset.exporter = 0
-
-        self.first = None
+    def __init__(self, int fd, Root root):
+        self._sockfd = fd
+        self._root = root
         
     @cython.boundscheck(False)
     def receive(self, const char* buffer, int size):
-        cdef ipfix_template_set_header* header
-        cdef ipfix_header* buf = <ipfix_header*>buffer
-        cdef int pos = sizeof(ipfix_header)
-        cdef unsigned short id
-        cdef unsigned short hlen
-        cdef int end
-        cdef const ipfix_flow* flows
+        cdef ipv5_header* header = <ipv5_header*>buffer
+        cdef int end, num, sockfd
+        cdef uint32_t count
+        cdef const ipv5_flow* flow
+        cdef flow_destination* dest = NULL
+        cdef flow_destination* nextdest
+        cdef const char* first = buffer+sizeof(ipv5_header)
 
-        cdef unsigned short buflen = ntohs(buf.length)
-        if buflen > size:  # broken packet 
-            return
-        end = buflen - sizeof(ipfix_template_set_header)
-        while pos <= end:
-            header = <ipfix_template_set_header*>(buffer + pos)
-            id = ntohs(header.id)
-            hlen = ntohs(header.length)
-            
-            flows = <ipfix_flow*>(buffer+pos+sizeof(ipfix_template_set_header))
-            pos += hlen
-            
-            if pos > buflen: # broken packet
-                return
-            if id < MINDATA_SET_ID: # ignore all non data buffers
-                continue
-            self._onflows(flows, hlen-sizeof(ipfix_template_set_header))
+        end = sizeof(ipv5_header)+header.count*sizeof(ipv5_flow)
 
-        return
+        if end > size: return # broken packet
 
-    @cython.boundscheck(False)
-    cdef void _onflows(self, const ipfix_flow* inflow, int bytes) nogil:
-        cdef int count
-        cdef ipfix_flow outflow
-        cdef uint32_t index
-        cdef ipfix_flow_tuple ftup
-        cdef ipfix_attributes atup
-        cdef ExporterSet* eset
+        count = 0
 
-        eset = cython.address(self.eset)
+        for num in range(header.count):
+            flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 
-        count = bytes/sizeof(ipfix_flow)
-        
-        if self.first is None:
-            while count > 0:
-                convertflow(inflow, cython.address(outflow))
+            self._checkrange(cython.address(dest), ntohl(flow.srcaddr), ntohl(flow.dstaddr), 
+                                                   ntohl(flow.dPkts), ntohl(flow.dOctets))
+
+        sockfd = self._sockfd
+        while dest != NULL:
+            sendto(sockfd, buffer, size, 0, cython.address(dest.addr), sizeof(dest.addr));            
+            nextdest = dest.next
+            dest.next = NULL
+            dest.used = 0
+            dest = nextdest
+
+    @cython.boundscheck(False)    
+    cdef void _checkrange(self, flow_destination** pfirstdest, 
+                          uint32_t srcaddr, uint32_t dstaddr, uint32_t packets, uint32_t octets) nogil:
+        cdef flow_entry* ent = self._root._fentry.first
+        cdef flow_collection* coll
+        cdef flow_destination* dest
+
+        while ent != NULL:
+            coll = cython.address(ent.coll)
+            if ((coll.minaddr <= srcaddr and coll.maxaddr >= srcaddr) or
+                (coll.minaddr <= dstaddr and coll.maxaddr >= dstaddr)):
+                coll.packets += packets
+                coll.octets += octets
+                coll.flows += 1
+                dest = ent.destaddr
+                if dest.used == 0:
+                    dest.flowpacks += 1
+                    dest.next = pfirstdest[0]
+                    pfirstdest[0] = dest
+                dest.used += 1
                 
-                if eset.exporter != outflow.exporter:
-                    with gil:
-                        self._setupexporter(eset, cython.address(outflow))
-                
-                copyflow(cython.address(outflow), cython.address(ftup))
-                copyattr(cython.address(outflow), cython.address(atup))
-                
-                # register attributes
-                index = eset.aadd(eset.aobj, cython.address(atup), 0, sizeof(ipfix_attributes))
-                # register flow with attributes 
-                index = eset.fadd(eset.fobj, cython.address(ftup), index, sizeof(ipfix_flow_tuple))
-                # register counters with flow
-                eset.tadd(eset.tobj, outflow.bytes, outflow.packets, index)
-    
-                inflow += 1
-                count -= 1
-        else:
-            while count > 0:
-                convertflow(inflow, cython.address(outflow))
-                
-                with gil:
-                    self.onqueries(cython.address(outflow))
-
-                if eset.exporter != outflow.exporter:
-                    with gil:
-                        self._setupexporter(eset, cython.address(outflow))
-                
-                copyflow(cython.address(outflow), cython.address(ftup))
-                copyattr(cython.address(outflow), cython.address(atup))
-                
-                # register attributes
-                index = eset.aadd(eset.aobj, cython.address(atup), 0, sizeof(ipfix_attributes))
-                # register flow with attributes 
-                index = eset.fadd(eset.fobj, cython.address(ftup), index, sizeof(ipfix_flow_tuple))
-                # register counters with flow
-                eset.tadd(eset.tobj, outflow.bytes, outflow.packets, index)
-    
-                inflow += 1
-                count -= 1
-
-    @cython.boundscheck(False)
-    cdef void _setupexporter(self, ExporterSet* eset, const ipfix_flow* flow):
-        cdef SecondsCollector seccollect
-        cdef Collector flowcollect
-        cdef Collector attrcollect
-
-        eset.exporter = flow.exporter
-
-        flowcollect, attrcollect, seccollect = self.sourceset.find(flow.exporter)
-        
-        eset.fobj = <void*>flowcollect
-        eset.aobj = <void*>attrcollect
-        eset.tobj = <void*>seccollect
-        
-        eset.fadd = <FlowAdd>flowcollect._add
-        eset.aadd = <AppAdd>attrcollect._add
-        eset.tadd = <TimeAdd>seccollect._add
-
-    @cython.boundscheck(False)
-    cdef void onqueries(self, const ipfix_flow* flow):
-        cdef RawQuery next
-        cdef RawQuery q = self.first
-
-        while q is not None:
-            q.onflow(flow)
-            q = q.next
-        
-    @cython.boundscheck(False)
-    def register(self, RawQuery q):
-        q.next = self.first
-        q.prev = None
-        self.first = q
-        if q.next is not None:
-            q.next.prev = q
-    
-    @cython.boundscheck(False)
-    def unregister(self, RawQuery q):
-        cdef RawQuery next = q.next
-        if next is not None:
-            next.prev = q.prev
-            q.next = None
-        if q.prev is not None:
-            q.prev.next = next
-            q.prev = None
-        else:
-            self.first = next
-
-@cython.boundscheck(False)
-cdef void convertflow(const ipfix_flow* inflow, ipfix_flow* outflow) nogil:
-    outflow.bytes = ntohl(inflow.bytes)
-    outflow.packets = ntohl(inflow.packets)
-    outflow.protocol = inflow.protocol
-    outflow.tos = inflow.tos
-    outflow.tcpflags = inflow.tcpflags
-    outflow.srcport = ntohs(inflow.srcport)
-    outflow.srcaddr = ntohl(inflow.srcaddr)
-    outflow.srcmask = inflow.srcmask
-    outflow.inpsnmp = ntohl(inflow.inpsnmp)
-    outflow.dstport = ntohs(inflow.dstport)
-    outflow.dstaddr = ntohl(inflow.dstaddr)
-    outflow.dstmask = inflow.dstmask
-    outflow.outsnmp = ntohl(inflow.outsnmp)
-    outflow.nexthop = ntohl(inflow.nexthop)
-    outflow.srcas = ntohl(inflow.srcas)
-    outflow.dstas = ntohl(inflow.dstas)
-    outflow.last = ntohl(inflow.last)
-    outflow.first = ntohl(inflow.first)
-    outflow.exporter = ntohl(inflow.exporter)
-    
-@cython.boundscheck(False)
-cdef void copyflow(const ipfix_flow* flow, ipfix_flow_tuple* ftup) nogil:
-    ftup.protocol = flow.protocol
-    ftup.srcport = flow.srcport
-    ftup.srcaddr = flow.srcaddr
-    ftup.dstport = flow.dstport
-    ftup.dstaddr = flow.dstaddr
-    
-@cython.boundscheck(False)
-cdef void copyattr(const ipfix_flow* flow, ipfix_attributes* atup) nogil:
-    atup.tos = flow.tos
-    atup.tcpflags = flow.tcpflags
-    atup.srcmask = flow.srcmask
-    atup.inpsnmp = flow.inpsnmp
-    atup.dstmask = flow.dstmask
-    atup.outsnmp = flow.outsnmp
-    atup.nexthop = flow.nexthop
-    atup.srcas = flow.srcas
-    atup.dstas = flow.dstas
+                #cython.address(coll.destaddr)
