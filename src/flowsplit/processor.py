@@ -4,7 +4,7 @@ Created on Mar 31, 2014
 @author: schernikov
 '''
 
-import socket, urlparse, re
+import socket, urlparse, re, os
 from zmq.eventloop import ioloop
 
 import flowsplit
@@ -28,6 +28,9 @@ def process(insock, fname):
     
     receiver.start()
 
+def showentries(entry):
+    entry.children()
+
 def _onentries(dests, mgroup):
     root = recmod.Root()
     _appendents(dests, root, mgroup)
@@ -46,9 +49,12 @@ def _appendents(dests, parent, mgroup):
             _appendents(dests, ent, ch)
 
 def _onmap(fname):
+    mgroup = []
+    if not fname: return mgroup
+    if not os.path.isfile(fname): 
+        raise Exception("File '%s' does not exist"%(fname))  
     with open(fname) as f:
         pos = 0
-        mgroup = []
         for line in f:
             pos+=1
             ln = line.strip()
@@ -74,7 +80,7 @@ def _onentry(mgroup, rng, addr, desc):
 def _parseaddr(addr):
     p = urlparse.urlsplit(addr)
     if p.scheme and p.scheme.lower() != 'udp':
-        raise Exception("Only udp scheme is supported for flow reception. Got '%s'"%(addr))
+        raise Exception("Only udp scheme is supported for flow reception. Got %s (%s)"%(p.scheme, addr))
     if p.port and p.hostname:
         return p.hostname, p.port
     if not p.port and not p.hostname:

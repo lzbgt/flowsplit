@@ -9,9 +9,10 @@ cdef extern from "netinet/in.h":
     int ntohs (int __netshort) nogil
     long ntohl (long __netlong) nogil
     uint16_t htons (uint16_t __hostshort) nogil
+    uint32_t htonl(uint32_t hostlong) nogil
 
     cdef struct in_addr:
-        pass
+        long s_addr
 
     cdef struct sockaddr_in:
         int sin_family

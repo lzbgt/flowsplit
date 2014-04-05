@@ -4,7 +4,7 @@ Created on Mar 31, 2014
 @author: schernikov
 '''
 
-import argparse
+import argparse, traceback
 
 import processor
 
@@ -18,6 +18,7 @@ def main():
     try:
         processor.process(args.input, args.mapfile)
     except Exception, e:
+        traceback.print_exc()
         print "Error: %s"%(str(e))
     except KeyboardInterrupt:
         print "exiting"

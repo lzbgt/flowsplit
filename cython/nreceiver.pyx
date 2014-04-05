@@ -30,11 +30,19 @@ cdef class Entry(object):
         self._dest = dest
         self._fentry.next = NULL
         self._fentry.first = NULL
+        self._fentry.coll.minaddr = mn
+        self._fentry.coll.maxaddr = mx
+        self._fentry.coll.packets = 0
+        self._fentry.coll.octets = 0
+        self._fentry.coll.flows = 0
         self._fentry.destaddr = cython.address(dest._dest)
     
     def attach(self, Entry ent):
         self._attach(ent)
         self._link(ent)
+        
+    def children(self):
+        return self._children
 
     @cython.boundscheck(False)
     cdef void _link(self, Entry ent):
@@ -79,7 +87,6 @@ cdef int _mkaddr(const char* ip, uint16_t port, sockaddr_in* addr):
 
     return inet_aton(ip, cython.address(addr.sin_addr));
 
-
 cdef class Receiver(object):
     cdef int _sockfd
     cdef Root _root
@@ -105,7 +112,6 @@ cdef class Receiver(object):
         end = sizeof(ipv5_header)+count*sizeof(ipv5_flow)
 
         if end > size: return # broken packet
-
         for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 
@@ -114,6 +120,9 @@ cdef class Receiver(object):
 
         sockfd = self._sockfd
         while dest != NULL:
+            #TMP
+            #print "sending %d to %s"%(size, dest2str(dest))
+            #
             sendto(sockfd, buffer, size, 0, cython.address(dest.addr), sizeof(dest.addr));            
             nextdest = dest.next
             dest.next = NULL
@@ -123,22 +132,50 @@ cdef class Receiver(object):
     @cython.boundscheck(False)    
     cdef void _checkrange(self, flow_destination** pfirstdest, 
                           uint32_t srcaddr, uint32_t dstaddr, uint32_t packets, uint32_t octets) nogil:
-        cdef flow_entry* ent = self._root._fentry.first
+        #TMP
+        #with gil:
+        #    print "addr: %s->%s"%(addr2str(srcaddr), addr2str(dstaddr))
+        # 
+        self._checksubrange(pfirstdest, self._root._fentry.first, srcaddr, dstaddr, packets, octets)
+
+    cdef int _checksubrange(self, flow_destination** pfirstdest, flow_entry* ent,
+                            uint32_t srcaddr, uint32_t dstaddr, uint32_t packets, uint32_t octets) nogil:
         cdef flow_collection* coll
         cdef flow_destination* dest
+        cdef int res = 0
 
         while ent != NULL:
             coll = cython.address(ent.coll)
             if ((coll.minaddr <= srcaddr and coll.maxaddr >= srcaddr) or
                 (coll.minaddr <= dstaddr and coll.maxaddr >= dstaddr)):
-                coll.packets += packets
-                coll.octets += octets
-                coll.flows += 1
-                dest = ent.destaddr
-                if dest.used == 0:
-                    dest.flowpacks += 1
-                    dest.next = pfirstdest[0]
-                    pfirstdest[0] = dest
-                dest.used += 1
-                
-                #cython.address(coll.destaddr)
+                if (ent.first == NULL or
+                    self._checksubrange(pfirstdest, ent.first, srcaddr, dstaddr, packets, octets) == 0):
+
+                    coll.packets += packets
+                    coll.octets += octets
+                    coll.flows += 1
+                    res += 1
+                    dest = ent.destaddr
+                    if dest.used == 0:
+                        dest.flowpacks += 1
+                        dest.next = pfirstdest[0]
+                        pfirstdest[0] = dest
+                    dest.used += 1
+                    #TMP
+                    #with gil:
+                    #    print "  adding %s"%(dest2str(dest))
+                    #                     
+
+            ent = ent.next
+
+        return res
+
+#cdef dest2str(flow_destination* dest):
+#    cdef uint8_t* paddr = <uint8_t*>cython.address(dest.addr.sin_addr.s_addr)
+#    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
+#
+#cdef addr2str(uint32_t addr):
+#    cdef uint32_t naddr = htonl(addr)
+#    cdef uint8_t* paddr = <uint8_t*>cython.address(naddr) 
+#    
+#    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
