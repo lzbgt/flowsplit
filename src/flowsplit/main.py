@@ -10,7 +10,7 @@ import processor
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', type=str, help='publisher interface to subscribe to', required=True)
+    parser.add_argument('-i', '--input', type=str, help='input interface to listen incoming flows', required=True)
     parser.add_argument('-f', '--mapfile', type=str, help='FA map file', default=None)
     
     args = parser.parse_args()
