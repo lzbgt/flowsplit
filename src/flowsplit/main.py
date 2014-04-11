@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', type=str, help='input interface to listen incoming flows', required=True)
     parser.add_argument('-d', '--database', type=str, help='database interface to pull map and push stats', default=None)
+    parser.add_argument('-t', '--hours', type=int, help='DB polling frequency in hours', default=None)
     
     args = parser.parse_args()
 
@@ -22,7 +23,7 @@ def main():
         port = None
             
     try:
-        processor.process(args.input, hostname, port)
+        processor.process(args.input, hostname, port, args.hours)
     except Exception, e:
         traceback.print_exc()
         print "Error: %s"%(str(e))

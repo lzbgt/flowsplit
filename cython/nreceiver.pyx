@@ -50,6 +50,10 @@ cdef class Entry(object):
         return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
     
     def attach(self, Entry ent):
+        cdef Entry prevparent = ent._parent
+        if prevparent is not None:
+            prevparent._children.remove(self)
+            prevparent._relink()
         self._attach(ent)
         self._link(ent)
         
@@ -77,6 +81,7 @@ cdef class Entry(object):
         cdef Entry parent = self._parent
         cdef Entry child
 
+        if parent is None: return
         self._parent = None
         parent._children.remove(self)
         for child in self._children:
@@ -86,14 +91,19 @@ cdef class Entry(object):
 
 cdef class Root(Entry):
     cdef _dests
+    cdef _ents
 
     def __init__(self):
         cdef Destination dest = Destination('', 0)
         super(Root, self).__init__(0, 2**32-1, dest)
         self._dests = {}
+        self._ents = {}
         
     def dests(self):
         return self._dests
+    
+    def entries(self):
+        return self._ents
 
 @cython.boundscheck(False)
 cdef int _mkaddr(const char* ip, uint16_t port, sockaddr_in* addr):

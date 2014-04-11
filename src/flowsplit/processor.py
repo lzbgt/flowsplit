@@ -16,20 +16,51 @@ recmod = flowsplit.loadmod('nreceiver')
 #entryre = re.compile('(?P<range>[^\s]+)\s+(?P<target>[^\s]+)(\s+(?P<desc>.*))?$')
 ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3>\d{1,3})/(?P<mask>\d{1,2})$')
 
-def process(insock, host, port):
+def process(insock, host, port, hours):
    
     def pullmap(root):
         mgroup = []
         records = flowsplit.db.pullmap(host, port)
         for rng, targ, desc in records:
             _onentry(mgroup, rng, targ, desc)
-        _appendents(root.dests(), root, mgroup)
-    
-    receiver = Receiver(insock, pullmap if host else None)
+        dests = root.dests()
+        ents = root.entries()
+        dstcount = len(dests)
+        entscount = len(ents)
+        useddest, usedents = _appendents(dests, ents, root, mgroup)
+        uuents = set(ents.keys()).difference(usedents)
+        dstcount = len(dests) - dstcount
+        entscount = len(ents) - entscount
+        if dstcount > 0:
+            print "added %d new destinations"%(dstcount)
+        if entscount > 0:
+            print "added %d new map entries"%(entscount)
+        if uuents:
+            print "Dropping unused maps:"
+            for entk in uuents:
+                ent = ents[entk]
+                ent.detach()
+                del ents[entk]
+                print "  %s"%(ent.getinfo())
+
+        uudests = set(dests.keys()).difference(useddest)
+        if uudests:
+            print "Dropping unused destinations:"
+            for dstk in uudests:
+                dst = dests[dstk]
+                del dst
+                print "  %s"%(dst.getinfo())
+                
+
+    if not hours: 
+        hours = 0
+    else:
+        print "Will poll for updates every %d hours"%(hours)
+    receiver = Receiver(insock, pullmap if host else None, hours*3600)
 
     print "Current mapping:"    
     showentries(receiver.root, '  ')
-    
+
     receiver.start()
 
 def showentries(entry, off):
@@ -37,17 +68,28 @@ def showentries(entry, off):
         print off+ch.getinfo()
         showentries(ch, off+'  ')
 
-def _appendents(dests, parent, mgroup):
+def _appendents(dests, ents, parent, mgroup):
+    useddest = set()
+    usedents = set()
     for mn, mx, host, port, ch in mgroup:
         key = '%s:%d'%(host, port)
+        useddest.add(key)
         dest = dests.get(key, None)
         if dest is None:
             dest = recmod.Destination(host, port)
             dests[key] = dest
-        ent = recmod.Entry(mn, mx, dest)
-        parent.attach(ent)
+        ek = (mn, mx, dest)
+        usedents.add(ek)
+        ent = ents.get(ek, None)
+        if ent is None:
+            ent = recmod.Entry(mn, mx, dest)
+            parent.attach(ent)
+            ents[ek] = ent
         if ch:
-            _appendents(dests, ent, ch)
+            ud, ue = _appendents(dests, ents, ent, ch)
+            useddest.update(ud)
+            usedents.update(ue)
+    return useddest, usedents
 
 def _onentry(mgroup, rng, addr, desc):
     mn, mx = ipvariations(rng)
@@ -117,10 +159,11 @@ def ipvariations(value):
     
 class Receiver(object):
 
-    def __init__(self, addr, pullmap):
+    def __init__(self, addr, pullmap, seconds):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
+        self._pullmap = pullmap
         loop = ioloop.IOLoop.instance()
         
         p = urlparse.urlsplit(addr)
@@ -138,9 +181,16 @@ class Receiver(object):
         self._nreceiver = recmod.Receiver(sock.fileno(), self.root)
         self._loop = loop
 
-        if pullmap: pullmap(self.root)
+        if pullmap: 
+            pullmap(self.root)
+            if seconds > 0:
+                timer = ioloop.PeriodicCallback(self._ontime, seconds*1000, loop)
+                timer.start()
 
         loop.add_handler(sock.fileno(), self._recv, loop.READ)
+        
+    def _ontime(self):
+        self._pullmap(self.root)
         
     def _recv(self, fd, events):
         data, addr = self._sock.recvfrom(2048); addr
