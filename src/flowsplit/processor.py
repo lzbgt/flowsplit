@@ -4,38 +4,39 @@ Created on Mar 31, 2014
 @author: schernikov
 '''
 
-import socket, urlparse, re, os
+import socket, urlparse, re
 from zmq.eventloop import ioloop
+#import os
 
-import flowsplit
+import flowsplit.db
 
 recmod = flowsplit.loadmod('nreceiver')
 
-commentre = re.compile('#.*')
-entryre = re.compile('(?P<range>[^\s]+)\s+(?P<target>[^\s]+)(\s+(?P<desc>.*))?$')
+#commentre = re.compile('#.*')
+#entryre = re.compile('(?P<range>[^\s]+)\s+(?P<target>[^\s]+)(\s+(?P<desc>.*))?$')
 ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3>\d{1,3})/(?P<mask>\d{1,2})$')
 
-def process(insock, fname):
+def process(insock, host, port):
+   
+    def pullmap(root):
+        mgroup = []
+        records = flowsplit.db.pullmap(host, port)
+        for rng, targ, desc in records:
+            _onentry(mgroup, rng, targ, desc)
+        _appendents(root.dests(), root, mgroup)
     
-    mgroup = _onmap(fname)
-    
-    inst = ioloop.IOLoop.instance()
-    
-    dests = {}
-    root = _onentries(dests, mgroup)
-    
-    receiver = Receiver(insock, inst, dests, root)
+    receiver = Receiver(insock, pullmap if host else None)
+
+    print "Current mapping:"    
+    showentries(receiver.root, '  ')
     
     receiver.start()
 
-def showentries(entry):
-    entry.children()
+def showentries(entry, off):
+    for ch in entry.children():
+        print off+ch.getinfo()
+        showentries(ch, off+'  ')
 
-def _onentries(dests, mgroup):
-    root = recmod.Root()
-    _appendents(dests, root, mgroup)
-    return root
-    
 def _appendents(dests, parent, mgroup):
     for mn, mx, host, port, ch in mgroup:
         key = '%s:%d'%(host, port)
@@ -48,39 +49,15 @@ def _appendents(dests, parent, mgroup):
         if ch:
             _appendents(dests, ent, ch)
 
-def _onmap(fname):
-    mgroup = []
-    if not fname: return mgroup
-    if not os.path.isfile(fname): 
-        raise Exception("File '%s' does not exist"%(fname))  
-    with open(fname) as f:
-        pos = 0
-        for line in f:
-            pos+=1
-            ln = line.strip()
-            if not ln: continue # skip empty line
-            m = commentre.match(ln)
-            if m: continue
-            m = entryre.match(ln)
-            if not m:
-                raise Exception("can not parse line %d in %s"%(pos, fname))
-            dd = m.groupdict()
-            try:
-                _onentry(mgroup, dd['range'], dd['target'], dd['desc'])
-            except Exception, e:
-                raise Exception("line: %d, %s"%(pos, str(e)))
-
-        return mgroup
-    
 def _onentry(mgroup, rng, addr, desc):
     mn, mx = ipvariations(rng)
-    host, port = _parseaddr(addr)
+    host, port = parseaddr(addr, 'udp', 'flow reception')
     _addnew(mgroup, mn, mx, host, port)
  
-def _parseaddr(addr):
+def parseaddr(addr, scheme, msg):
     p = urlparse.urlsplit(addr)
-    if p.scheme and p.scheme.lower() != 'udp':
-        raise Exception("Only udp scheme is supported for flow reception. Got %s (%s)"%(p.scheme, addr))
+    if p.scheme and p.scheme.lower() != scheme:
+        raise Exception("Only %s scheme is supported for %s. Got %s (%s)"%(scheme, msg, p.scheme, addr))
     if p.port and p.hostname:
         return p.hostname, p.port
     if not p.port and not p.hostname:
@@ -91,7 +68,7 @@ def _parseaddr(addr):
             except:
                 pass
 
-    raise Exception("Please provide hostname:port to forward flows to. Got '%s'"%(addr))
+    raise Exception("Please provide hostname:port for %s. Got '%s'"%(msg, addr))
     
  
 def _addnew(mgroup, nmn, nmx, nhost, nport):
@@ -140,10 +117,11 @@ def ipvariations(value):
     
 class Receiver(object):
 
-    def __init__(self, addr, ioloop, dests, root):
+    def __init__(self, addr, pullmap):
         self.allsources = {}
         self._onsource = None
-        self._dests = dests
+        self.root = recmod.Root()
+        loop = ioloop.IOLoop.instance()
         
         p = urlparse.urlsplit(addr)
         if not p.scheme or p.scheme.lower() != 'udp':
@@ -157,10 +135,12 @@ class Receiver(object):
         sock.bind((p.hostname, p.port))
         self._sock = sock
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), root)
-        self._loop = ioloop
+        self._nreceiver = recmod.Receiver(sock.fileno(), self.root)
+        self._loop = loop
 
-        ioloop.add_handler(sock.fileno(), self._recv, ioloop.READ)
+        if pullmap: pullmap(self.root)
+
+        loop.add_handler(sock.fileno(), self._recv, loop.READ)
         
     def _recv(self, fd, events):
         data, addr = self._sock.recvfrom(2048); addr

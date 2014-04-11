@@ -11,6 +11,8 @@ from common cimport *
 
 cdef class Destination(object):
     cdef flow_destination _dest
+    cdef _dsthost
+    cdef uint16_t _port
     
     def __init__(self, const char* dsthost, uint16_t port):
         if port != 0 and _mkaddr(dsthost, port, cython.address(self._dest.addr)) == 0:
@@ -18,6 +20,11 @@ cdef class Destination(object):
         self._dest.flowpacks = 0
         self._dest.used = 0
         self._dest.next = NULL
+        self._dsthost = dsthost
+        self._port = port
+        
+    def getinfo(self):
+        return "%s:%d"%(self._dsthost, self._port)
 
 cdef class Entry(object):
     cdef Entry _parent
@@ -36,6 +43,11 @@ cdef class Entry(object):
         self._fentry.coll.octets = 0
         self._fentry.coll.flows = 0
         self._fentry.destaddr = cython.address(dest._dest)
+    
+    def getinfo(self):
+        cdef flow_collection* coll = cython.address(self._fentry.coll)
+        
+        return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
     
     def attach(self, Entry ent):
         self._attach(ent)
@@ -73,10 +85,15 @@ cdef class Entry(object):
         self._children = []
 
 cdef class Root(Entry):
+    cdef _dests
 
     def __init__(self):
         cdef Destination dest = Destination('', 0)
         super(Root, self).__init__(0, 2**32-1, dest)
+        self._dests = {}
+        
+    def dests(self):
+        return self._dests
 
 @cython.boundscheck(False)
 cdef int _mkaddr(const char* ip, uint16_t port, sockaddr_in* addr):
@@ -173,9 +190,9 @@ cdef class Receiver(object):
 #cdef dest2str(flow_destination* dest):
 #    cdef uint8_t* paddr = <uint8_t*>cython.address(dest.addr.sin_addr.s_addr)
 #    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
-#
-#cdef addr2str(uint32_t addr):
-#    cdef uint32_t naddr = htonl(addr)
-#    cdef uint8_t* paddr = <uint8_t*>cython.address(naddr) 
-#    
-#    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
+
+def addr2str(uint32_t addr):
+    cdef uint32_t naddr = htonl(addr)
+    cdef uint8_t* paddr = <uint8_t*>cython.address(naddr) 
+    
+    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
