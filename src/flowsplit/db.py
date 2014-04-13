@@ -10,7 +10,7 @@ def main():
     pullmap('10.202.7.101', '5029')
     
 def pullmap(host, port):
-    engine = sqlalchemy.create_engine('mysql://mysql:mysql@%s:%d/activity'%(host, port), echo=False)
+    engine = sqlalchemy.create_engine('mysql://mysql@%s:%d/frontier_activity'%(host, port), echo=False)
     metadata = sqlalchemy.MetaData()
     fa_front = sqlalchemy.Table('fa_frontier', metadata, autoload=True, autoload_with=engine)
     loc_front = sqlalchemy.Table('loc_frontier', metadata, autoload=True, autoload_with=engine)
