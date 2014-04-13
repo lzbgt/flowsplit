@@ -47,7 +47,7 @@ cdef class Entry(object):
     def getinfo(self):
         cdef flow_collection* coll = cython.address(self._fentry.coll)
         
-        return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
+        return "[%s:%s] -> %s"%(addr2str(<uint32_t>coll.minaddr), addr2str(<uint32_t>coll.maxaddr), self._dest.getinfo())
     
     def attach(self, Entry ent):
         cdef Entry prevparent = ent._parent
