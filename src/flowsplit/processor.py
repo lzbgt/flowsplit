@@ -193,8 +193,7 @@ class Receiver(object):
         self._pullmap(self.root)
         
     def _recv(self, fd, events):
-        data, addr = self._sock.recvfrom(2048); addr
-        self._nreceiver.receive(data, len(data))
+        self._nreceiver.receive(fd)
 
     def start(self):
         print "listening on %s:%d"%(self._sock.getsockname())

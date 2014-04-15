@@ -21,8 +21,11 @@ cdef extern from "netinet/in.h":
 
 cdef extern from "sys/socket.h":
     cdef int AF_INET
+    ctypedef long socklen_t 
     ssize_t sendto (int __fd, const void *__buf, size_t __n,
                    int __flags, const sockaddr_in* __addr, size_t __addr_len) nogil
+    ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
+                     sockaddr_in *src_addr, socklen_t *addrlen) nogil                   
 
 cdef extern from "arpa/inet.h":
     int inet_aton (const char *__cp, in_addr *__inp) nogil

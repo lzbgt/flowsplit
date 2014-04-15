@@ -123,7 +123,15 @@ cdef class Receiver(object):
         self._root = root
         
     @cython.boundscheck(False)
-    def receive(self, const char* buffer, int size):
+    def receive(self, int fd):
+        cdef char buffer[2048]
+        cdef sockaddr_in other
+        cdef socklen_t addr_size
+        cdef int size
+
+        addr_size = sizeof(other)
+        size = recvfrom(fd, buffer, sizeof(buffer), 0, cython.address(other), cython.address(addr_size))
+        
         cdef ipv5_header* header = <ipv5_header*>buffer
         cdef int end, num, sockfd
         cdef uint16_t count
