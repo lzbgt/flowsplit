@@ -19,6 +19,10 @@ cdef extern from "netinet/in.h":
         int sin_port
         in_addr sin_addr
 
+cdef extern:
+    int _import_array()
+    int _import_umath()
+
 cdef extern from "sys/socket.h":
     cdef int AF_INET
     ctypedef long socklen_t 
@@ -89,4 +93,7 @@ cdef extern from "ipfix.h":
         flow_entry*         first
         flow_destination*   destaddr
         flow_collection     coll
-
+        
+    cdef struct flow_source:
+        long         address
+        long         activity

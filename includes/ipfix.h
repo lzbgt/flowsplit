@@ -66,6 +66,11 @@ struct PACKED flow_destination {
 	flow_destination_t* next;
 };
 
+struct PACKED flow_source {
+	uint32_t 			address;
+	uint32_t			activity;
+} flow_source_t;
+
 #include <sys/types.h>
 #include <sys/socket.h>
 

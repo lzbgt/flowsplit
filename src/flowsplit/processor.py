@@ -4,7 +4,7 @@ Created on Mar 31, 2014
 @author: schernikov
 '''
 
-import socket, urlparse, re
+import socket, urlparse, re, datetime, dateutil.tz, sys
 from zmq.eventloop import ioloop
 #import os
 
@@ -16,7 +16,9 @@ recmod = flowsplit.loadmod('nreceiver')
 #entryre = re.compile('(?P<range>[^\s]+)\s+(?P<target>[^\s]+)(\s+(?P<desc>.*))?$')
 ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3>\d{1,3})/(?P<mask>\d{1,2})$')
 
-def process(insock, host, port, hours):
+tzutc = dateutil.tz.tzutc()
+
+def process(insock, host, port, hours, minutes):
    
     def pullmap(root):
         mgroup = []
@@ -56,7 +58,11 @@ def process(insock, host, port, hours):
         hours = 0
     else:
         print "Will poll for updates every %d hours"%(hours)
-    receiver = Receiver(insock, pullmap if host else None, hours*3600)
+    if not minutes:
+        minutes = 0
+    else:
+        print "Will check for missing flows every %d minutes"%(minutes)
+    receiver = Receiver(insock, pullmap if host else None, hours*3600, minutes*60)
 
     print "Current mapping:"    
     showentries(receiver.root, '  ')
@@ -159,7 +165,7 @@ def ipvariations(value):
     
 class Receiver(object):
 
-    def __init__(self, addr, pullmap, seconds):
+    def __init__(self, addr, pullmap, pollseconds, reportseconds):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
@@ -178,22 +184,32 @@ class Receiver(object):
         sock.bind((p.hostname, p.port))
         self._sock = sock
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), self.root)
+        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._logger)
         self._loop = loop
 
         if pullmap: 
             pullmap(self.root)
-            if seconds > 0:
-                timer = ioloop.PeriodicCallback(self._ontime, seconds*1000, loop)
+            if pollseconds > 0:
+                timer = ioloop.PeriodicCallback(self._ondbpoll, pollseconds*1000, loop)
+                timer.start()
+        if reportseconds > 0:
+                timer = ioloop.PeriodicCallback(self._onreport, reportseconds*1000, loop)
                 timer.start()
 
         loop.add_handler(sock.fileno(), self._recv, loop.READ)
         
-    def _ontime(self):
+    def _ondbpoll(self):
         self._pullmap(self.root)
+        
+    def _onreport(self):
+        self._nreceiver.report()
         
     def _recv(self, fd, events):
         self._nreceiver.receive(fd)
+
+    def _logger(self, msg):
+        now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
+        print >>sys.stderr, "[%s]: %s"%(str(now), msg)
 
     def start(self):
         print "listening on %s:%d"%(self._sock.getsockname())

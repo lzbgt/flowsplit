@@ -7,6 +7,9 @@
 
 cimport cython
 
+import numpy as np
+cimport numpy as np
+
 from common cimport *
 
 cdef class Destination(object):
@@ -114,13 +117,73 @@ cdef int _mkaddr(const char* ip, uint16_t port, sockaddr_in* addr):
 
     return inet_aton(ip, cython.address(addr.sin_addr));
 
+cdef class Sources(object):
+    cdef _entries
+    cdef flow_source* _sources
+    cdef uint32_t _maxsize
+    cdef uint32_t _size
+    cdef _logger
+    
+    def __init__(self, uint32_t size, logger):
+        self._size = 0
+        self._entries = np.zeros((size, sizeof(flow_source)), dtype=np.uint8)
+        self._resize(size)
+        self._logger = logger
+    
+    @cython.boundscheck(False)
+    cdef void check(self, uint32_t addr) nogil:
+        cdef uint32_t pos
+        cdef flow_source* src
+        
+        for pos in range(self._size):
+            src = self._sources+pos
+            if src.address == addr:
+                src.activity += 1
+                return
+        if self._size >= self._maxsize:
+            with gil:
+                self._resize(self._maxsize*2)
+        src = self._sources+self._size
+        self._size += 1
+        src.address = addr
+        src.activity = 1
+        with gil:
+            self._logger("new source added: %s"%(addr2str(ntohl(addr))))
+    
+    @cython.boundscheck(False)
+    cdef _resize(self, uint32_t size):
+        cdef np.ndarray[np.uint8_t, ndim=2] arr
+
+        self._entries.resize((size, sizeof(flow_source)), refcheck=False)
+        self._maxsize = size
+        arr = self._entries
+        self._sources = <flow_source*>(<void*>arr.data)
+        
+    def report(self):
+        cdef uint32_t pos
+        cdef flow_source* src
+        
+        for pos in range(self._size):
+            src = self._sources+pos
+            if src.activity == 0:
+                self._logger("no flows from %s"%(addr2str(ntohl(src.address))))
+            else:
+                src.activity = 0
+
 cdef class Receiver(object):
     cdef int _sockfd
     cdef Root _root
+    cdef Sources _sources
+    cdef _logger
 
-    def __init__(self, int fd, Root root):
+    def __init__(self, int fd, Root root, logger):
         self._sockfd = fd
         self._root = root
+        self._logger = logger
+        self._sources = Sources(100, logger)
+        
+    def report(self):
+        self._sources.report()
         
     @cython.boundscheck(False)
     def receive(self, int fd):
@@ -131,6 +194,8 @@ cdef class Receiver(object):
 
         addr_size = sizeof(other)
         size = recvfrom(fd, buffer, sizeof(buffer), 0, cython.address(other), cython.address(addr_size))
+        
+        self._sources.check(other.sin_addr.s_addr)
         
         cdef ipv5_header* header = <ipv5_header*>buffer
         cdef int end, num, sockfd
@@ -214,3 +279,10 @@ def addr2str(uint32_t addr):
     cdef uint8_t* paddr = <uint8_t*>cython.address(naddr) 
     
     return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
+
+def _dummy():
+    "exists only to get rid of compile warnings"
+    cdef int tmp = 0
+    if tmp:
+        _import_umath()    
+        _import_array()
