@@ -220,7 +220,10 @@ class Receiver(object):
         
     def _onstat(self, stamp, msg):
         "executed in DBThread context"
-        self._dbconn.pushstat(stamp, msg)
+        try:
+            self._dbconn.pushstat(stamp, msg)
+        except Exception, e:
+            self._outlogger("Can not push stats '%s': %s"%(msg, str(e)))
         
     def _dblogger(self, msg):
         now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
