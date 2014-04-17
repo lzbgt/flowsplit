@@ -138,6 +138,9 @@ cdef class Sources(object):
         for pos in range(self._size):
             src = self._sources+pos
             if src.address == addr:
+                if src.activity == 0:
+                    with gil:
+                        self._logger("source is active: %s"%(addr2str(ntohl(addr))))
                 src.activity += 1
                 return
         if self._size >= self._maxsize:
@@ -170,20 +173,43 @@ cdef class Sources(object):
             else:
                 src.activity = 0
 
+@cython.boundscheck(False)
+cdef _init_counters(flow_counters* counters):
+    counters.all = 0
+    counters.broken = 0
+    counters.dropped = 0
+
+@cython.boundscheck(False)
+cdef _append_counters(flow_counters* targ, const flow_counters* counters):
+    targ.all += counters.all
+    targ.broken += counters.broken
+    targ.dropped += counters.dropped
+
 cdef class Receiver(object):
     cdef int _sockfd
     cdef Root _root
     cdef Sources _sources
     cdef _logger
+    cdef flow_counters _current
+    cdef flow_counters _totals
 
     def __init__(self, int fd, Root root, logger):
         self._sockfd = fd
         self._root = root
         self._logger = logger
         self._sources = Sources(100, logger)
+        _init_counters(cython.address(self._totals))
+        _init_counters(cython.address(self._current))
         
-    def report(self):
+    def report(self, onstats):
+        cdef flow_counters* counters = cython.address(self._current)
+        
         self._sources.report()
+        _append_counters(cython.address(self._totals), counters)
+        
+        onstats("packets  all:%d broken:%d dropped:%d"%(counters.all, counters.broken, counters.dropped))
+        
+        _init_counters(counters)
         
     @cython.boundscheck(False)
     def receive(self, int fd):
@@ -191,9 +217,12 @@ cdef class Receiver(object):
         cdef sockaddr_in other
         cdef socklen_t addr_size
         cdef int size
+        cdef flow_counters* counters = cython.address(self._current)
 
         addr_size = sizeof(other)
         size = recvfrom(fd, buffer, sizeof(buffer), 0, cython.address(other), cython.address(addr_size))
+        
+        counters.all += 1
         
         self._sources.check(other.sin_addr.s_addr)
         
@@ -205,18 +234,26 @@ cdef class Receiver(object):
         cdef flow_destination* nextdest
         cdef const char* first = buffer+sizeof(ipv5_header)
 
-        if ntohs(header.version) != IPV5_VERSION: return # wrong version
+        if ntohs(header.version) != IPV5_VERSION:
+            counters.broken += 1 
+            return # wrong version
 
         count = ntohs(header.count)
 
         end = sizeof(ipv5_header)+count*sizeof(ipv5_flow)
 
-        if end > size: return # broken packet
+        if end > size:
+            counters.broken += 1
+            return # broken packet
         for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 
             self._checkrange(cython.address(dest), ntohl(flow.srcaddr), ntohl(flow.dstaddr), 
                                                    ntohl(flow.dPkts), ntohl(flow.dOctets))
+
+        if dest == NULL:
+            counters.dropped += 1
+            return
 
         sockfd = self._sockfd
         while dest != NULL:

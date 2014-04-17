@@ -4,10 +4,12 @@ Created on Apr 8, 2014
 @author: schernikov
 '''
 
-import sqlalchemy.sql
+import sqlalchemy.sql, datetime, dateutil.tz
 
 def main():
-    pullmap('10.202.7.101', '5029')
+    #pullmap('10.202.7.101', 5029)
+    tzutc = dateutil.tz.tzutc()
+    pushstat('10.202.7.101', 5029, datetime.datetime.utcnow().replace(tzinfo=tzutc), 'hello world')
     
 def pullmap(host, port):
     engine = sqlalchemy.create_engine('mysql://mysql@%s:%d/frontier_activity'%(host, port), echo=False)
@@ -48,6 +50,21 @@ def pullmap(host, port):
     conn.close()
     
     return res
+
+def pushstat(host, port, stamp, msg):
+    engine = sqlalchemy.create_engine('mysql://mysql@%s:%d/frontier_activity'%(host, port), echo=False)
+    metadata = sqlalchemy.MetaData()
+
+    addresses = sqlalchemy.Table('flow_sources', metadata,
+                      sqlalchemy.Column('stamp', sqlalchemy.DateTime(timezone=True)),
+                      sqlalchemy.Column('message', sqlalchemy.String(256)))
+    metadata.create_all(engine)
+
+    conn = engine.connect()
+    print "sending [%s] %s"%(stamp, msg)
+    conn.execute(addresses.insert(), stamp=stamp, message=msg) 
+
+    conn.close()
 
 if __name__ == '__main__':
     main()

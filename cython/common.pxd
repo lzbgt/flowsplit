@@ -95,5 +95,10 @@ cdef extern from "ipfix.h":
         flow_collection     coll
         
     cdef struct flow_source:
-        long         address
-        long         activity
+        long        address
+        long        activity
+
+    cdef struct flow_counters:
+        long        all
+        long        broken
+        long        dropped

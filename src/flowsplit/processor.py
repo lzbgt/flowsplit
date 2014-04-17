@@ -64,8 +64,8 @@ def process(insock, host, port, hours, minutes):
         print "Will check for missing flows every %d minutes"%(minutes)
     receiver = Receiver(insock, pullmap if host else None, hours*3600, minutes*60)
 
-    print "Current mapping:"    
-    showentries(receiver.root, '  ')
+    print "%d entries in current mapping"%(len(receiver.root.entries()))
+    #showentries(receiver.root, '  ')
 
     receiver.start()
 
@@ -184,7 +184,7 @@ class Receiver(object):
         sock.bind((p.hostname, p.port))
         self._sock = sock
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._logger)
+        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger)
         self._loop = loop
 
         if pullmap: 
@@ -202,15 +202,21 @@ class Receiver(object):
         self._pullmap(self.root)
         
     def _onreport(self):
-        self._nreceiver.report()
+        self._nreceiver.report(self._outlogger)
         
     def _recv(self, fd, events):
         self._nreceiver.receive(fd)
 
-    def _logger(self, msg):
+    def _outlogger(self, msg):
+        now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
+        print >>sys.stderr, "[%s]: %s"%(str(now), msg)
+        
+    def _dblogger(self, msg):
         now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
         print >>sys.stderr, "[%s]: %s"%(str(now), msg)
 
     def start(self):
-        print "listening on %s:%d"%(self._sock.getsockname())
+        msg = "listening on %s:%d"%(self._sock.getsockname())
+        print msg
+        self._dblogger(msg)
         self._loop.start()

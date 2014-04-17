@@ -71,6 +71,12 @@ struct PACKED flow_source {
 	uint32_t			activity;
 } flow_source_t;
 
+struct PACKED flow_counters {
+	uint64_t 			all;
+	uint64_t			broken;
+	uint64_t			dropped;
+} flow_counters_t;
+
 #include <sys/types.h>
 #include <sys/socket.h>
 
