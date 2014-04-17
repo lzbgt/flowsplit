@@ -138,7 +138,8 @@ cdef class Sources(object):
         for pos in range(self._size):
             src = self._sources+pos
             if src.address == addr:
-                if src.activity == 0:
+                if src.inactive != 0:
+                    src.inactive = 0
                     with gil:
                         self._logger("source is active: %s"%(addr2str(ntohl(addr))))
                 src.activity += 1
@@ -169,7 +170,9 @@ cdef class Sources(object):
         for pos in range(self._size):
             src = self._sources+pos
             if src.activity == 0:
-                self._logger("no flows from %s"%(addr2str(ntohl(src.address))))
+                if src.inactive == 0:
+                    src.inactive = 1
+                    self._logger("no flows from %s"%(addr2str(ntohl(src.address))))
             else:
                 src.activity = 0
 

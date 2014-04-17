@@ -69,6 +69,7 @@ struct PACKED flow_destination {
 struct PACKED flow_source {
 	uint32_t 			address;
 	uint32_t			activity;
+	uint8_t				inactive;
 } flow_source_t;
 
 struct PACKED flow_counters {

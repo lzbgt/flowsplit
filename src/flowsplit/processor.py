@@ -8,7 +8,7 @@ import socket, urlparse, re, datetime, dateutil.tz, sys
 from zmq.eventloop import ioloop
 #import os
 
-import flowsplit.db
+import flowsplit.db, flowsplit.longthread
 
 recmod = flowsplit.loadmod('nreceiver')
 
@@ -19,41 +19,9 @@ ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3
 tzutc = dateutil.tz.tzutc()
 
 def process(insock, host, port, hours, minutes):
+    
+    dbconn = flowsplit.db.DBConnection(host, port) if host else None
    
-    def pullmap(root):
-        mgroup = []
-        records = flowsplit.db.pullmap(host, port)
-        for rng, targ, desc in records:
-            _onentry(mgroup, rng, targ, desc)
-        dests = root.dests()
-        ents = root.entries()
-        dstcount = len(dests)
-        entscount = len(ents)
-        useddest, usedents = _appendents(dests, ents, root, mgroup)
-        uuents = set(ents.keys()).difference(usedents)
-        dstcount = len(dests) - dstcount
-        entscount = len(ents) - entscount
-        if dstcount > 0:
-            print "added %d new destinations"%(dstcount)
-        if entscount > 0:
-            print "added %d new map entries"%(entscount)
-        if uuents:
-            print "Dropping unused maps:"
-            for entk in uuents:
-                ent = ents[entk]
-                ent.detach()
-                del ents[entk]
-                print "  %s"%(ent.getinfo())
-
-        uudests = set(dests.keys()).difference(useddest)
-        if uudests:
-            print "Dropping unused destinations:"
-            for dstk in uudests:
-                dst = dests[dstk]
-                del dst
-                print "  %s"%(dst.getinfo())
-                
-
     if not hours: 
         hours = 0
     else:
@@ -62,10 +30,7 @@ def process(insock, host, port, hours, minutes):
         minutes = 0
     else:
         print "Will check for missing flows every %d minutes"%(minutes)
-    receiver = Receiver(insock, pullmap if host else None, hours*3600, minutes*60)
-
-    print "%d entries in current mapping"%(len(receiver.root.entries()))
-    #showentries(receiver.root, '  ')
+    receiver = Receiver(insock, dbconn, hours*3600, minutes*60)
 
     receiver.start()
 
@@ -165,11 +130,11 @@ def ipvariations(value):
     
 class Receiver(object):
 
-    def __init__(self, addr, pullmap, pollseconds, reportseconds):
+    def __init__(self, addr, dbconn, pollseconds, reportseconds):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
-        self._pullmap = pullmap
+        self._dbconn = dbconn
         loop = ioloop.IOLoop.instance()
         
         p = urlparse.urlsplit(addr)
@@ -184,22 +149,64 @@ class Receiver(object):
         sock.bind((p.hostname, p.port))
         self._sock = sock
 
+        self._thread = flowsplit.longthread.LongThread(100, 1000)
+
         self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger)
         self._loop = loop
 
-        if pullmap: 
-            pullmap(self.root)
+        if dbconn: 
+            self._ondbtime()
             if pollseconds > 0:
-                timer = ioloop.PeriodicCallback(self._ondbpoll, pollseconds*1000, loop)
+                timer = ioloop.PeriodicCallback(self._ondbtime, pollseconds*1000, loop)
                 timer.start()
         if reportseconds > 0:
                 timer = ioloop.PeriodicCallback(self._onreport, reportseconds*1000, loop)
                 timer.start()
 
         loop.add_handler(sock.fileno(), self._recv, loop.READ)
+
+    def _parsemap(self, records):
+        mgroup = []
+        for rng, targ, desc in records:
+            _onentry(mgroup, rng, targ, desc)
+        dests = self.root.dests()
+        ents = self.root.entries()
+        dstcount = len(dests)
+        entscount = len(ents)
+        useddest, usedents = _appendents(dests, ents, self.root, mgroup)
+        uuents = set(ents.keys()).difference(usedents)
+        dstcount = len(dests) - dstcount
+        entscount = len(ents) - entscount
+        if dstcount > 0:
+            print "added %d new destinations"%(dstcount)
+        if entscount > 0:
+            print "added %d new map entries"%(entscount)
+        if uuents:
+            print "Dropping unused maps:"
+            for entk in uuents:
+                ent = ents[entk]
+                ent.detach()
+                del ents[entk]
+                print "  %s"%(ent.getinfo())
+
+        uudests = set(dests.keys()).difference(useddest)
+        if uudests:
+            print "Dropping unused destinations:"
+            for dstk in uudests:
+                dst = dests[dstk]
+                del dst
+                print "  %s"%(dst.getinfo())
         
+    def _ondbtime(self):
+        self._thread.execute(self._ondbpoll)
+
     def _ondbpoll(self):
-        self._pullmap(self.root)
+        "executed in DBThread context"
+        try:
+            records = self._dbconn.pullmap()
+            self._loop.add_callback(self._parsemap, records)    # run parser in main thread context
+        except Exception, e:
+            self._outlogger("Can not pull map: %s"%(str(e)))
         
     def _onreport(self):
         self._nreceiver.report(self._outlogger)
@@ -211,9 +218,13 @@ class Receiver(object):
         now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
         print >>sys.stderr, "[%s]: %s"%(str(now), msg)
         
+    def _onstat(self, stamp, msg):
+        "executed in DBThread context"
+        self._dbconn.pushstat(stamp, msg)
+        
     def _dblogger(self, msg):
         now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
-        print >>sys.stderr, "[%s]: %s"%(str(now), msg)
+        self._thread.execute(self._onstat, now, msg)
 
     def start(self):
         msg = "listening on %s:%d"%(self._sock.getsockname())
