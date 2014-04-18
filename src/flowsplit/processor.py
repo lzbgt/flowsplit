@@ -18,9 +18,16 @@ ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3
 
 tzutc = dateutil.tz.tzutc()
 
-def process(insock, host, port, hours, minutes):
+def process(addr, host, port, hours, minutes):
+    p = urlparse.urlsplit(addr)
+    if not p.scheme or p.scheme.lower() != 'udp':
+        raise Exception("Only udp scheme is supported for flow reception. Got '%s'"%(addr))
+    if not p.port:
+        raise Exception("Please provide port to receive flows on. Got '%s'"%(addr))
+
+    myid = '%s_%d'%(p.hostname.replace('.','_'), p.port)
     
-    dbconn = flowsplit.db.DBConnection(host, port) if host else None
+    dbconn = flowsplit.db.DBConnection(myid, host, port) if host else None
    
     if not hours: 
         hours = 0
@@ -30,7 +37,7 @@ def process(insock, host, port, hours, minutes):
         minutes = 0
     else:
         log.dump("Will check for missing flows every %d minutes"%(minutes))
-    receiver = Receiver(insock, dbconn, hours*3600, minutes*60)
+    receiver = Receiver(p.hostname, p.port, dbconn, hours*3600, minutes*60)
 
     receiver.start()
 
@@ -130,23 +137,17 @@ def ipvariations(value):
     
 class Receiver(object):
 
-    def __init__(self, addr, dbconn, pollseconds, reportseconds):
+    def __init__(self, hostname, port, dbconn, pollseconds, reportseconds):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
         self._dbconn = dbconn
         loop = ioloop.IOLoop.instance()
         
-        p = urlparse.urlsplit(addr)
-        if not p.scheme or p.scheme.lower() != 'udp':
-            raise Exception("Only udp scheme is supported for flow reception. Got '%s'"%(addr))
-        if not p.port:
-            raise Exception("Please provide port to receive flows on. Got '%s'"%(addr))
-
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setblocking(0)
-        sock.bind((p.hostname, p.port))
+        sock.bind((hostname, port))
         self._sock = sock
 
         self._thread = flowsplit.longthread.LongThread(100, 1000)

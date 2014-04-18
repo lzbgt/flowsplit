@@ -10,7 +10,7 @@ import sqlalchemy.sql, pprint
 import flowsplit.logger as log
 
 def main():
-    dbcon = DBConnection('10.202.7.101', 5029)
+    dbcon = DBConnection('sergeys', '10.202.7.101', 5029)
     
     res = dbcon.pullmap()
 
@@ -22,13 +22,13 @@ def main():
     
 class DBConnection(object):
     
-    def __init__(self, host, port):
+    def __init__(self, instanceid, host, port):
         engine = sqlalchemy.create_engine('mysql://mysql@%s:%d/frontier_activity'%(host, port), echo=False)
         metadata = sqlalchemy.MetaData()
         self._fa_front = sqlalchemy.Table('fa_frontier', metadata, autoload=True, autoload_with=engine)
         self._loc_front = sqlalchemy.Table('loc_frontier', metadata, autoload=True, autoload_with=engine)
         
-        tname = 'flow_sources_%s_%d'%(host.replace('.','_'), port)
+        tname = 'flow_sources_%s'%(instanceid)
         self._log_front = sqlalchemy.Table(tname, metadata,
                           sqlalchemy.Column('stamp', sqlalchemy.DateTime(timezone=True)),
                           sqlalchemy.Column('message', sqlalchemy.String(256)))
