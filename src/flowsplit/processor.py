@@ -151,7 +151,7 @@ class Receiver(object):
 
         self._thread = flowsplit.longthread.LongThread(100, 1000)
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger)
+        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger if dbconn else log.dump)
         self._loop = loop
 
         if dbconn: 
@@ -233,5 +233,6 @@ class Receiver(object):
     def start(self):
         msg = "listening on %s:%d"%(self._sock.getsockname())
         log.dump(msg)
-        self._dblogger(msg)
+        if self._dbconn: self._dblogger(msg)
+            
         self._loop.start()
