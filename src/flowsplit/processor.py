@@ -8,7 +8,7 @@ import socket, urlparse, re, datetime, dateutil.tz, sys
 from zmq.eventloop import ioloop
 #import os
 
-import flowsplit.db, flowsplit.longthread
+import flowsplit.db, flowsplit.longthread, flowsplit.logger as log
 
 recmod = flowsplit.loadmod('nreceiver')
 
@@ -25,18 +25,18 @@ def process(insock, host, port, hours, minutes):
     if not hours: 
         hours = 0
     else:
-        print "Will poll for updates every %d hours"%(hours)
+        log.dump("Will poll for updates every %d hours"%(hours))
     if not minutes:
         minutes = 0
     else:
-        print "Will check for missing flows every %d minutes"%(minutes)
+        log.dump("Will check for missing flows every %d minutes"%(minutes))
     receiver = Receiver(insock, dbconn, hours*3600, minutes*60)
 
     receiver.start()
 
 def showentries(entry, off):
     for ch in entry.children():
-        print off+ch.getinfo()
+        log.dump(off+ch.getinfo())
         showentries(ch, off+'  ')
 
 def _appendents(dests, ents, parent, mgroup):
@@ -178,24 +178,24 @@ class Receiver(object):
         dstcount = len(dests) - dstcount
         entscount = len(ents) - entscount
         if dstcount > 0:
-            print "added %d new destinations"%(dstcount)
+            log.dump("added %d new destinations"%(dstcount))
         if entscount > 0:
-            print "added %d new map entries"%(entscount)
+            log.dump("added %d new map entries"%(entscount))
         if uuents:
-            print "Dropping unused maps:"
+            log.dump("Dropping unused maps:")
             for entk in uuents:
                 ent = ents[entk]
                 ent.detach()
                 del ents[entk]
-                print "  %s"%(ent.getinfo())
+                log.dump("  %s"%(ent.getinfo()))
 
         uudests = set(dests.keys()).difference(useddest)
         if uudests:
-            print "Dropping unused destinations:"
+            log.dump("Dropping unused destinations:")
             for dstk in uudests:
                 dst = dests[dstk]
                 del dst
-                print "  %s"%(dst.getinfo())
+                log.dump("  %s"%(dst.getinfo()))
         
     def _ondbtime(self):
         self._thread.execute(self._ondbpoll)
@@ -216,7 +216,8 @@ class Receiver(object):
 
     def _outlogger(self, msg):
         now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
-        print >>sys.stderr, "[%s]: %s"%(str(now), msg)
+        sys.stderr.write("[%s]: %s\n"%(str(now), msg))
+        sys.stderr.flush()
         
     def _onstat(self, stamp, msg):
         "executed in DBThread context"
@@ -231,6 +232,6 @@ class Receiver(object):
 
     def start(self):
         msg = "listening on %s:%d"%(self._sock.getsockname())
-        print msg
+        log.dump(msg)
         self._dblogger(msg)
         self._loop.start()

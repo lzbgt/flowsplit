@@ -6,6 +6,8 @@ Created on Apr 8, 2014
 
 import sqlalchemy.sql, datetime, dateutil.tz
 
+import flowsplit.logger as log
+
 def main():
     dbcon = DBConnection('10.202.7.101', 5029)
     
@@ -54,7 +56,7 @@ class DBConnection(object):
             for row in result:
                 dest = dd.get(row[fid], None)
                 if dest is None:
-                    print "Warning: %d refers to non-existing destination id"%(row[fid])
+                    log.dump("Warning: %d refers to non-existing destination id"%(row[fid]))
                     continue
                 res.append((row[sub], dest, row[desc]))
         result.close()
@@ -62,7 +64,7 @@ class DBConnection(object):
         return res
     
     def pushstat(self, stamp, msg):
-        print "[%s] %s"%(stamp, msg)
+        log.dump("[%s] %s"%(stamp, msg))
         self._conn.execute(self._log_front.insert(), stamp=stamp, message=msg)     
     
     def close(self):
