@@ -4,18 +4,21 @@ Created on Apr 8, 2014
 @author: schernikov
 '''
 
-import sqlalchemy.sql, datetime, dateutil.tz
+import sqlalchemy.sql, pprint
+#import datetime, dateutil.tz
 
 import flowsplit.logger as log
 
 def main():
     dbcon = DBConnection('10.202.7.101', 5029)
     
-    #pullmap('10.202.7.101', 5029)
-    tzutc = dateutil.tz.tzutc()
-    dbcon.pushstat(datetime.datetime.utcnow().replace(tzinfo=tzutc), 'hello world')
+    res = dbcon.pullmap()
+
+#    tzutc = dateutil.tz.tzutc()
+#    dbcon.pushstat(datetime.datetime.utcnow().replace(tzinfo=tzutc), 'hello world')
     
     dbcon.close()
+    pprint.pprint(res)
     
 class DBConnection(object):
     
@@ -25,12 +28,14 @@ class DBConnection(object):
         self._fa_front = sqlalchemy.Table('fa_frontier', metadata, autoload=True, autoload_with=engine)
         self._loc_front = sqlalchemy.Table('loc_frontier', metadata, autoload=True, autoload_with=engine)
         
-        self._log_front = sqlalchemy.Table('flow_sources', metadata,
+        tname = 'flow_sources_%s_%d'%(host.replace('.','_'), port)
+        self._log_front = sqlalchemy.Table(tname, metadata,
                           sqlalchemy.Column('stamp', sqlalchemy.DateTime(timezone=True)),
                           sqlalchemy.Column('message', sqlalchemy.String(256)))
         metadata.create_all(engine)
         
         self._conn = engine.connect()
+        self._stats_backlog = []
 
     def pullmap(self):
         dd = {}
@@ -65,7 +70,24 @@ class DBConnection(object):
     
     def pushstat(self, stamp, msg):
         log.dump("[%s] %s"%(stamp, msg))
-        self._conn.execute(self._log_front.insert(), stamp=stamp, message=msg)     
+        while len(self._stats_backlog) > 0:
+            s, m = self._stats_backlog[0]
+            try:
+                self._conn.execute(self._log_front.insert(), stamp=s, message=m)
+            except:
+                if len(self._stats_backlog) > 10000:
+                    log.dump("dropping '[%s] %s'. Too many entries in backlog (%d)."%(stamp, msg, len(self._stats_backlog)))
+                else:
+                    self._stats_backlog.append((stamp, msg))
+                return
+            self._stats_backlog.pop(0)
+            
+        try:
+            self._conn.execute(self._log_front.insert(), stamp=stamp, message=msg)
+        except Exception, e:
+            self._stats_backlog.append((stamp, msg))
+            raise e
+    
     
     def close(self):
         self._conn.close()
