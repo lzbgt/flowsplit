@@ -5,10 +5,10 @@ Created on Mar 31, 2014
 '''
 
 import socket, urlparse, re, datetime, dateutil.tz, sys
-from zmq.eventloop import ioloop
+import tornado.ioloop as ioloop
 #import os
 
-import flowsplit.db, flowsplit.longthread, flowsplit.logger as log
+import flowsplit.db, flowsplit.longthread, flowsplit.logger as log, flowsplit.web
 
 recmod = flowsplit.loadmod('nreceiver')
 
@@ -18,7 +18,7 @@ ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3
 
 tzutc = dateutil.tz.tzutc()
 
-def process(addr, host, port, hours, minutes):
+def process(addr, host, port, hours, minutes, wport):
     p = urlparse.urlsplit(addr)
     if not p.scheme or p.scheme.lower() != 'udp':
         raise Exception("Only udp scheme is supported for flow reception. Got '%s'"%(addr))
@@ -37,7 +37,7 @@ def process(addr, host, port, hours, minutes):
         minutes = 0
     else:
         log.dump("Will check for missing flows every %d minutes"%(minutes))
-    receiver = Receiver(p.hostname, p.port, dbconn, hours*3600, minutes*60)
+    receiver = Receiver(p.hostname, p.port, dbconn, hours*3600, minutes*60, wport)
 
     receiver.start()
 
@@ -134,14 +134,23 @@ def ipvariations(value):
     mx = mn | msk
     return mn, mx
 
+def timenow():
+    return datetime.datetime.utcnow().replace(tzinfo=tzutc)
+    
+def tm2str(d):
+    if not d: return ''
+    return str(d)
     
 class Receiver(object):
 
-    def __init__(self, hostname, port, dbconn, pollseconds, reportseconds):
+    def __init__(self, hostname, port, dbconn, pollseconds, reportseconds, wport):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
         self._dbconn = dbconn
+        self._started = timenow()
+        self._reported = None
+        self._dbpolled = None
         loop = ioloop.IOLoop.instance()
         
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -165,6 +174,9 @@ class Receiver(object):
                 timer.start()
 
         loop.add_handler(sock.fileno(), self._recv, loop.READ)
+        
+        if wport:
+            flowsplit.web.setup(wport, self._onstatus)
 
     def _parsemap(self, records):
         mgroup = []
@@ -203,6 +215,7 @@ class Receiver(object):
 
     def _ondbpoll(self):
         "executed in DBThread context"
+        self._dbpolled = timenow()
         try:
             records = self._dbconn.pullmap()
             self._loop.add_callback(self._parsemap, records)    # run parser in main thread context
@@ -210,15 +223,23 @@ class Receiver(object):
             self._outlogger("Can not pull map: %s"%(str(e)))
         
     def _onreport(self):
+        self._reported = timenow()
         self._nreceiver.report(self._outlogger)
         
     def _recv(self, fd, events):
         self._nreceiver.receive(fd)
 
     def _outlogger(self, msg):
-        now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
+        now = timenow()
         sys.stderr.write("[%s]: %s\n"%(str(now), msg))
         sys.stderr.flush()
+        
+    def _onstatus(self):
+        stat = self._nreceiver.stats()
+        stat['time'] = {'start':tm2str(self._started), 
+                        'poll':tm2str(self._reported), 
+                        'dbpoll':tm2str(self._dbpolled)}
+        return stat
         
     def _onstat(self, stamp, msg):
         "executed in DBThread context"
@@ -228,7 +249,7 @@ class Receiver(object):
             self._outlogger("Can not push stats '%s': %s"%(msg, str(e)))
         
     def _dblogger(self, msg):
-        now = datetime.datetime.utcnow().replace(tzinfo=tzutc)
+        now = timenow()
         self._thread.execute(self._onstat, now, msg)
 
     def start(self):

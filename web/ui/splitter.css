@@ -1,0 +1,53 @@
+table {
+	margin-top: 20px;
+}
+
+#srccont, #dstcont {
+	display: inline-block;
+	vertical-align: top;
+}
+
+#srccont {
+	margin-right: 30px;
+}
+
+.tbnum {
+	text-align: right;
+}
+
+th {
+	padding-left: 10px;
+	text-align: left;
+}
+
+caption {
+	text-align: left;
+	font-size: 130%;
+}
+
+.actvcls, .inactcls {
+	margin-left: 10px;
+}
+
+.actvcls {
+	color: green;
+}
+
+.inactcls {
+	color: red;
+}
+
+.tmname {
+	text-align: right;
+	padding-right: 10px;
+	font-size: 110%;
+}
+
+.tmcls, .reltmcls {
+	display: inline-block;
+}
+
+.reltmcls {
+	font-size: 80%;
+	margin-left: 10px;
+}

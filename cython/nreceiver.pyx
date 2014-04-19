@@ -28,6 +28,9 @@ cdef class Destination(object):
         
     def getinfo(self):
         return "%s:%d"%(self._dsthost, self._port)
+    
+    def packets(self):
+        return self._dest.flowpacks
 
 cdef class Entry(object):
     cdef Entry _parent
@@ -174,7 +177,22 @@ cdef class Sources(object):
                     src.inactive = 1
                     self._logger("no flows from %s"%(addr2str(ntohl(src.address))))
             else:
+                src.total += src.activity
                 src.activity = 0
+
+    def stats(self):
+        cdef uint32_t pos
+        cdef flow_source* src
+        
+        cdef lst = []
+        
+        for pos in range(self._size):
+            src = self._sources+pos
+            lst.append({'address':addr2str(ntohl(src.address)),
+                        'activity':src.activity,
+                        'total':src.total+src.activity,
+                        'active':(src.inactive==0)})
+        return lst
 
 @cython.boundscheck(False)
 cdef _init_counters(flow_counters* counters):
@@ -213,6 +231,23 @@ cdef class Receiver(object):
         onstats("packets  all:%d broken:%d dropped:%d"%(counters.all, counters.broken, counters.dropped))
         
         _init_counters(counters)
+        
+    def stats(self):
+        cdef flow_counters* curr = cython.address(self._current)
+        cdef flow_counters* tot = cython.address(self._totals)
+
+        cdef destinations = []        
+        for dest in self._root.dests().values():
+            destinations.append({'address':dest.getinfo(), 'packets':dest.packets()})
+        
+        return {'flows':{'current':{'all':curr.all, 
+                                    'broken':curr.broken, 
+                                    'dropped':curr.dropped},
+                         'total':{'all':tot.all+curr.all, 
+                                  'broken':tot.broken+curr.broken, 
+                                  'dropped':tot.dropped+curr.dropped}},
+                'sources':self._sources.stats(),
+                'destinations':destinations}
         
     @cython.boundscheck(False)
     def receive(self, int fd):

@@ -97,6 +97,7 @@ cdef extern from "ipfix.h":
     cdef struct flow_source:
         long        address
         long        activity
+        long        total
         int         inactive
 
     cdef struct flow_counters:
