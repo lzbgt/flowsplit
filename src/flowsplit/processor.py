@@ -18,7 +18,7 @@ ipmaskre = re.compile('(?P<b0>\d{1,3})\.(?P<b1>\d{1,3})\.(?P<b2>\d{1,3})\.(?P<b3
 
 tzutc = dateutil.tz.tzutc()
 
-def process(addr, host, port, hours, minutes, wport):
+def process(addr, host, port, hours, minutes, num, wport):
     p = urlparse.urlsplit(addr)
     if not p.scheme or p.scheme.lower() != 'udp':
         raise Exception("Only udp scheme is supported for flow reception. Got '%s'"%(addr))
@@ -37,7 +37,10 @@ def process(addr, host, port, hours, minutes, wport):
         minutes = 0
     else:
         log.dump("Will check for missing flows every %d minutes"%(minutes))
-    receiver = Receiver(p.hostname, p.port, dbconn, hours*3600, minutes*60, wport)
+        
+    log.dump("Will declare inactive source in %d periods (%d minutes)."%(num, num*minutes))
+    
+    receiver = Receiver(p.hostname, p.port, dbconn, hours*3600, minutes*60, num, wport)
 
     receiver.start()
 
@@ -143,7 +146,7 @@ def tm2str(d):
     
 class Receiver(object):
 
-    def __init__(self, hostname, port, dbconn, pollseconds, reportseconds, wport):
+    def __init__(self, hostname, port, dbconn, pollseconds, reportseconds, num, wport):
         self.allsources = {}
         self._onsource = None
         self.root = recmod.Root()
@@ -161,7 +164,7 @@ class Receiver(object):
 
         self._thread = flowsplit.longthread.LongThread(100, 1000)
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger if dbconn else log.dump)
+        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger if dbconn else log.dump, num)
         self._loop = loop
 
         if dbconn: 

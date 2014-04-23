@@ -109,7 +109,7 @@ function Splitter (){
 		var tab = mktable('Received Flow Packets', ['', 'all', 'broken', 'dropped'])
 		inpcont.append(tab);
 		addinput(tab, 'total', data.flows.total);
-		addinput(tab, 'current', data.flows.total);
+		addinput(tab, 'current', data.flows.current);
 
 		var srccont = $('#srccont');
 		var tab = mktable('Sources', ['address', 'total', 'activity', 'state'])

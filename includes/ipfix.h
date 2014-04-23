@@ -70,7 +70,7 @@ struct PACKED flow_source {
 	uint32_t 			address;
 	uint32_t			activity;
 	uint64_t			total;
-	uint8_t				inactive;
+	uint32_t			inactive;
 } flow_source_t;
 
 struct PACKED flow_counters {

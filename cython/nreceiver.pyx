@@ -126,12 +126,14 @@ cdef class Sources(object):
     cdef uint32_t _maxsize
     cdef uint32_t _size
     cdef _logger
+    cdef int _num
     
-    def __init__(self, uint32_t size, logger):
+    def __init__(self, uint32_t size, logger, int num):
         self._size = 0
         self._entries = np.zeros((size, sizeof(flow_source)), dtype=np.uint8)
         self._resize(size)
         self._logger = logger
+        self._num = num
     
     @cython.boundscheck(False)
     cdef void check(self, uint32_t addr) nogil:
@@ -142,9 +144,10 @@ cdef class Sources(object):
             src = self._sources+pos
             if src.address == addr:
                 if src.inactive != 0:
+                    if src.inactive >= self._num:
+                        with gil:
+                            self._logger("source is active: %s"%(addr2str(ntohl(addr))))
                     src.inactive = 0
-                    with gil:
-                        self._logger("source is active: %s"%(addr2str(ntohl(addr))))
                 src.activity += 1
                 return
         if self._size >= self._maxsize:
@@ -173,8 +176,8 @@ cdef class Sources(object):
         for pos in range(self._size):
             src = self._sources+pos
             if src.activity == 0:
-                if src.inactive == 0:
-                    src.inactive = 1
+                src.inactive += 1
+                if src.inactive == self._num:
                     self._logger("no flows from %s"%(addr2str(ntohl(src.address))))
             else:
                 src.total += src.activity
@@ -191,7 +194,7 @@ cdef class Sources(object):
             lst.append({'address':addr2str(ntohl(src.address)),
                         'activity':src.activity,
                         'total':src.total+src.activity,
-                        'active':(src.inactive==0)})
+                        'active':(src.inactive < self._num)})
         return lst
 
 @cython.boundscheck(False)
@@ -214,11 +217,11 @@ cdef class Receiver(object):
     cdef flow_counters _current
     cdef flow_counters _totals
 
-    def __init__(self, int fd, Root root, logger):
+    def __init__(self, int fd, Root root, logger, int num):
         self._sockfd = fd
         self._root = root
         self._logger = logger
-        self._sources = Sources(100, logger)
+        self._sources = Sources(100, logger, num)
         _init_counters(cython.address(self._totals))
         _init_counters(cython.address(self._current))
         
