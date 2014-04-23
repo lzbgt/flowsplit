@@ -136,7 +136,16 @@ cdef class Sources(object):
         self._num = num
     
     @cython.boundscheck(False)
-    cdef void check(self, uint32_t addr) nogil:
+    cdef void _sourceinc(self, flow_source* src, uint32_t seq, uint32_t count) nogil:
+        cdef uint32_t expseq
+
+        src.activity += 1
+        expseq = src.seq + count    # expected sequence
+        if seq != expseq: src.ooscount += 1
+        src.seq = seq
+
+    @cython.boundscheck(False)
+    cdef void check(self, uint32_t addr, uint32_t seq, uint32_t count) nogil:
         cdef uint32_t pos
         cdef flow_source* src
         
@@ -148,7 +157,7 @@ cdef class Sources(object):
                         with gil:
                             self._logger("source is active: %s"%(addr2str(ntohl(addr))))
                     src.inactive = 0
-                src.activity += 1
+                self._sourceinc(src, seq, count)
                 return
         if self._size >= self._maxsize:
             with gil:
@@ -156,7 +165,9 @@ cdef class Sources(object):
         src = self._sources+self._size
         self._size += 1
         src.address = addr
-        src.activity = 1
+        src.activity = 0
+        self._sourceinc(src, seq, count)
+
         with gil:
             self._logger("new source added: %s"%(addr2str(ntohl(addr))))
     
@@ -194,7 +205,8 @@ cdef class Sources(object):
             lst.append({'address':addr2str(ntohl(src.address)),
                         'activity':src.activity,
                         'total':src.total+src.activity,
-                        'active':(src.inactive < self._num)})
+                        'active':(src.inactive < self._num),
+                        'ooscount':src.ooscount})
         return lst
 
 @cython.boundscheck(False)
@@ -265,8 +277,6 @@ cdef class Receiver(object):
         
         counters.all += 1
         
-        self._sources.check(other.sin_addr.s_addr)
-        
         cdef ipv5_header* header = <ipv5_header*>buffer
         cdef int end, num, sockfd
         cdef uint16_t count
@@ -286,6 +296,9 @@ cdef class Receiver(object):
         if end > size:
             counters.broken += 1
             return # broken packet
+        
+        self._sources.check(other.sin_addr.s_addr, ntohl(header.flow_sequence), count)
+        
         for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 

@@ -112,7 +112,7 @@ function Splitter (){
 		addinput(tab, 'current', data.flows.current);
 
 		var srccont = $('#srccont');
-		var tab = mktable('Sources', ['address', 'total', 'activity', 'state'])
+		var tab = mktable('Sources', ['address', 'total', 'bad seq', 'activity', 'state'])
 		srccont.append(tab);
 		for ( var idx in data.sources) {
 			var src = data.sources[idx];
@@ -120,6 +120,7 @@ function Splitter (){
 			tab.append(row);
 			addCell(row, src.address);
 			addNum(row, src.total);
+			addNum(row, src.ooscount);
 			addNum(row, src.activity);
 			addCell(row, (src.active == true)?mktxt('active', 'actvcls'):mktxt('inactive', 'inactcls'));
 		}

@@ -99,6 +99,8 @@ cdef extern from "ipfix.h":
         long        activity
         long        total
         int         inactive
+        long        seq
+        long        ooscount
 
     cdef struct flow_counters:
         long        all
