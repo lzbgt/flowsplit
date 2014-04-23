@@ -53,7 +53,7 @@ cdef class Entry(object):
     def getinfo(self):
         cdef flow_collection* coll = cython.address(self._fentry.coll)
         
-        return "[%s:%s] -> %s"%(addr2str(<uint32_t>coll.minaddr), addr2str(<uint32_t>coll.maxaddr), self._dest.getinfo())
+        return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
     
     def attach(self, Entry ent):
         cdef Entry prevparent = ent._parent
@@ -352,7 +352,8 @@ cdef class Receiver(object):
 #    cdef uint8_t* paddr = <uint8_t*>cython.address(dest.addr.sin_addr.s_addr)
 #    return "%d.%d.%d.%d"%(paddr[0], paddr[1], paddr[2], paddr[3])
 
-def addr2str(uint32_t addr):
+def addr2str(long int ad):
+    cdef uint32_t addr = <uint32_t>ad
     cdef uint32_t naddr = htonl(addr)
     cdef uint8_t* paddr = <uint8_t*>cython.address(naddr) 
     
