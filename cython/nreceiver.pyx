@@ -141,7 +141,8 @@ cdef class Sources(object):
 
         src.activity += 1
         expseq = src.seq + count    # expected sequence
-        if seq != expseq: src.ooscount += 1
+        if seq != expseq and src.seq != 0:
+            src.ooscount += 1
         src.seq = seq
 
     @cython.boundscheck(False)
