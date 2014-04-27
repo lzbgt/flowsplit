@@ -79,6 +79,7 @@ struct PACKED flow_counters {
 	uint64_t 			all;
 	uint64_t			broken;
 	uint64_t			dropped;
+	uint64_t			other;
 } flow_counters_t;
 
 #include <sys/types.h>

@@ -5,6 +5,17 @@ cdef extern from "stdint.h":
     ctypedef long uint32_t
     ctypedef long uint64_t
 
+cdef extern from "linux/ip.h":
+    cdef struct iphdr:
+        long saddr
+        long daddr
+        
+cdef extern from "linux/udp.h":
+    cdef struct udphdr:
+        int source
+        int dest
+        int check
+
 cdef extern from "netinet/in.h":
     int ntohs (int __netshort) nogil
     long ntohl (long __netlong) nogil
@@ -106,3 +117,4 @@ cdef extern from "ipfix.h":
         long        all
         long        broken
         long        dropped
+        long        other

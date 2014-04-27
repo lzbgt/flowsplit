@@ -156,15 +156,17 @@ class Receiver(object):
         self._dbpolled = None
         loop = ioloop.IOLoop.instance()
         
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        #sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         sock.setblocking(0)
         sock.bind((hostname, port))
         self._sock = sock
 
         self._thread = flowsplit.longthread.LongThread(100, 1000)
 
-        self._nreceiver = recmod.Receiver(sock.fileno(), self.root, self._dblogger if dbconn else log.dump, num)
+        self._nreceiver = recmod.Receiver(sock.fileno(), port, self.root, self._dblogger if dbconn else log.dump, num)
         self._loop = loop
 
         if dbconn: 

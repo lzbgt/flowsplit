@@ -229,11 +229,13 @@ cdef class Receiver(object):
     cdef _logger
     cdef flow_counters _current
     cdef flow_counters _totals
+    cdef uint16_t _port
 
-    def __init__(self, int fd, Root root, logger, int num):
+    def __init__(self, int fd, uint16_t port, Root root, logger, int num):
         self._sockfd = fd
         self._root = root
         self._logger = logger
+        self._port = port
         self._sources = Sources(100, logger, num)
         _init_counters(cython.address(self._totals))
         _init_counters(cython.address(self._current))
@@ -268,23 +270,35 @@ cdef class Receiver(object):
     @cython.boundscheck(False)
     def receive(self, int fd):
         cdef char buffer[2048]
-        cdef sockaddr_in other
-        cdef socklen_t addr_size
+        cdef char* data
         cdef int size
         cdef flow_counters* counters = cython.address(self._current)
+        cdef iphdr* iph
+        cdef udphdr* udph
 
-        addr_size = sizeof(other)
-        size = recvfrom(fd, buffer, sizeof(buffer), 0, cython.address(other), cython.address(addr_size))
+        size = recvfrom(fd, buffer, sizeof(buffer), 0, NULL, NULL)
+        #size = recvfrom(fd, buffer, sizeof(buffer), 0, NULL, cython.address(addr_size))
+        iph = <iphdr*>buffer
+        udph = <udphdr*>(buffer+sizeof(iphdr))
+
+        if self._port != ntohs(udph.dest):
+            counters.other += 1
+            return
+
+        data = buffer+sizeof(iphdr)+sizeof(udphdr)
         
+#        print " %d (%s[%d]->%s[%d])"%(size, addr2str(ntohl(iph.saddr)), ntohs(udph.source), 
+#                                      addr2str(ntohl(iph.daddr)), ntohs(udph.dest))
+
         counters.all += 1
         
-        cdef ipv5_header* header = <ipv5_header*>buffer
+        cdef ipv5_header* header = <ipv5_header*>data
         cdef int end, num, sockfd
         cdef uint16_t count
         cdef const ipv5_flow* flow
         cdef flow_destination* dest = NULL
         cdef flow_destination* nextdest
-        cdef const char* first = buffer+sizeof(ipv5_header)
+        cdef const char* first = data+sizeof(ipv5_header)
 
         if ntohs(header.version) != IPV5_VERSION:
             counters.broken += 1 
@@ -298,7 +312,7 @@ cdef class Receiver(object):
             counters.broken += 1
             return # broken packet
         
-        self._sources.check(other.sin_addr.s_addr, ntohl(header.flow_sequence), count)
+        self._sources.check(iph.saddr, ntohl(header.flow_sequence), count)
         
         for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
@@ -311,10 +325,15 @@ cdef class Receiver(object):
             return
 
         sockfd = self._sockfd
+        udph.check = 0
+
         while dest != NULL:
             #TMP
             #print "sending %d to %s"%(size, dest2str(dest))
             #
+            iph.daddr = dest.addr.sin_addr.s_addr
+            udph.dest = dest.addr.sin_port
+
             sendto(sockfd, buffer, size, 0, cython.address(dest.addr), sizeof(dest.addr));            
             nextdest = dest.next
             dest.next = NULL
