@@ -1,4 +1,3 @@
 cython/build/
 *.pyc
 *.so
-cython/*.c
