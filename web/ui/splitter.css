@@ -2,12 +2,12 @@ table {
 	margin-top: 20px;
 }
 
-#srccont, #dstcont {
+#srccont, #dstcont, #mskcont {
 	display: inline-block;
 	vertical-align: top;
 }
 
-#srccont {
+#srccont, #dstcont {
 	margin-right: 30px;
 }
 
@@ -50,4 +50,17 @@ caption {
 .reltmcls {
 	font-size: 80%;
 	margin-left: 10px;
+}
+
+.dstrow:HOVER {
+	cursor: pointer;
+	background-color: rgb(240, 240, 240);
+}
+
+.seldst {
+	background-color: silver;
+}
+
+.seldst:HOVER {
+	background-color: rgb(220, 220, 220);
 }

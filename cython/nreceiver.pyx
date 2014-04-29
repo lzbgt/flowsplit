@@ -12,6 +12,33 @@ cimport numpy as np
 
 from common cimport *
 
+@cython.boundscheck(False)
+cdef void _init_flow_info(flow_info* info) nogil:
+    info.flowpacks = 0
+    info.packets = 0
+    info.octets = 0
+    info.flows = 0
+    info.used = 0
+    info.next = NULL
+
+@cython.boundscheck(False)
+cdef flow_info* _reset_flow_info(flow_info* info) nogil:
+    cdef flow_info* next = info.next
+    info.next = NULL
+    info.used = 0
+    return next
+
+@cython.boundscheck(False)
+cdef void _inc_flow_info(flow_info** pfirst, flow_info* info, uint32_t packets, uint32_t octets) nogil:
+    if info.used == 0:
+        info.flowpacks += 1
+        info.next = pfirst[0]
+        pfirst[0] = info
+    info.packets += packets
+    info.octets += octets
+    info.flows += 1
+    info.used += 1
+
 cdef class Destination(object):
     cdef flow_destination _dest
     cdef _dsthost
@@ -20,18 +47,18 @@ cdef class Destination(object):
     def __init__(self, const char* dsthost, uint16_t port):
         if port != 0 and _mkaddr(dsthost, port, cython.address(self._dest.addr)) == 0:
             raise Exception("invalid address: %s:%d"%(dsthost, port))
-        self._dest.flowpacks = 0
-        self._dest.used = 0
-        self._dest.next = NULL
+        _init_flow_info(cython.address(self._dest.info))
         self._dsthost = dsthost
         self._port = port
         
     def getinfo(self):
         return "%s:%d"%(self._dsthost, self._port)
     
-    def packets(self):
-        return self._dest.flowpacks
+    def stats(self):
+        cdef flow_info* info = cython.address(self._dest.info)
 
+        return {'flowpackets':info.flowpacks, 'packets':info.packets, 'octets':info.octets, 'flows':info.flows}
+    
 cdef class Entry(object):
     cdef Entry _parent
     cdef _children
@@ -45,15 +72,26 @@ cdef class Entry(object):
         self._fentry.first = NULL
         self._fentry.coll.minaddr = mn
         self._fentry.coll.maxaddr = mx
-        self._fentry.coll.packets = 0
-        self._fentry.coll.octets = 0
-        self._fentry.coll.flows = 0
+        _init_flow_info(cython.address(self._fentry.coll.info))
         self._fentry.destaddr = cython.address(dest._dest)
     
     def getinfo(self):
         cdef flow_collection* coll = cython.address(self._fentry.coll)
         
         return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
+    
+    def stats(self):
+        cdef flow_info* info = cython.address(self._fentry.coll.info)
+        
+        cdef nm = addr2str(self._fentry.coll.minaddr)
+        cdef uint32_t diff = (self._fentry.coll.maxaddr - self._fentry.coll.minaddr)
+        cdef int bits = 0
+        while diff > 0:
+            diff >>= 1
+            bits += 1
+        nm += '/%d'%(32-bits)
+
+        return {'name':nm, 'flowpackets':info.flowpacks, 'packets':info.packets, 'octets':info.octets, 'flows':info.flows}
     
     def attach(self, Entry ent):
         cdef Entry prevparent = ent._parent
@@ -215,12 +253,14 @@ cdef _init_counters(flow_counters* counters):
     counters.all = 0
     counters.broken = 0
     counters.dropped = 0
+    counters.other = 0
 
 @cython.boundscheck(False)
 cdef _append_counters(flow_counters* targ, const flow_counters* counters):
     targ.all += counters.all
     targ.broken += counters.broken
     targ.dropped += counters.dropped
+    targ.other += counters.other
 
 cdef class Receiver(object):
     cdef int _sockfd
@@ -256,16 +296,26 @@ cdef class Receiver(object):
 
         cdef destinations = []        
         for dest in self._root.dests().values():
-            destinations.append({'address':dest.getinfo(), 'packets':dest.packets()})
+            destinations.append({'address':dest.getinfo(), 'stats':dest.stats()})
         
         return {'flows':{'current':{'all':curr.all, 
                                     'broken':curr.broken, 
-                                    'dropped':curr.dropped},
+                                    'dropped':curr.dropped,
+                                    'other':curr.other},
                          'total':{'all':tot.all+curr.all, 
                                   'broken':tot.broken+curr.broken, 
-                                  'dropped':tot.dropped+curr.dropped}},
+                                  'dropped':tot.dropped+curr.dropped,
+                                  'other':tot.other+curr.other}},
                 'sources':self._sources.stats(),
                 'destinations':destinations}
+        
+    def deststat(self, nm):
+        dest = self._root.dests().get(nm, None)
+        if dest is None:
+            return {}
+        
+        
+        return
         
     @cython.boundscheck(False)
     def receive(self, int fd):
@@ -296,8 +346,8 @@ cdef class Receiver(object):
         cdef int end, num, sockfd
         cdef uint16_t count
         cdef const ipv5_flow* flow
-        cdef flow_destination* dest = NULL
-        cdef flow_destination* nextdest
+        cdef flow_info* destinfo = NULL
+        cdef flow_info* collinfo = NULL
         cdef const char* first = data+sizeof(ipv5_header)
 
         if ntohs(header.version) != IPV5_VERSION:
@@ -317,12 +367,18 @@ cdef class Receiver(object):
         for num in range(count):
             flow = <ipv5_flow*>(first + num*sizeof(ipv5_flow))
 
-            self._checkrange(cython.address(dest), ntohl(flow.srcaddr), ntohl(flow.dstaddr), 
-                                                   ntohl(flow.dPkts), ntohl(flow.dOctets))
+            self._checkrange(cython.address(destinfo), cython.address(collinfo),
+                             ntohl(flow.srcaddr), ntohl(flow.dstaddr), 
+                             ntohl(flow.dPkts), ntohl(flow.dOctets))
 
-        if dest == NULL:
+        while collinfo != NULL:
+            collinfo = _reset_flow_info(collinfo)
+
+        if destinfo == NULL:
             counters.dropped += 1
             return
+
+        cdef flow_destination* dest = <flow_destination*>destinfo
 
         sockfd = self._sockfd
         udph.check = 0
@@ -334,25 +390,19 @@ cdef class Receiver(object):
             iph.daddr = dest.addr.sin_addr.s_addr
             udph.dest = dest.addr.sin_port
 
-            sendto(sockfd, buffer, size, 0, cython.address(dest.addr), sizeof(dest.addr));            
-            nextdest = dest.next
-            dest.next = NULL
-            dest.used = 0
-            dest = nextdest
+            sendto(sockfd, buffer, size, 0, cython.address(dest.addr), sizeof(dest.addr));
+            
+            dest = <flow_destination*>_reset_flow_info(cython.address(dest.info))
 
     @cython.boundscheck(False)    
-    cdef void _checkrange(self, flow_destination** pfirstdest, 
+    cdef void _checkrange(self, flow_info** pfirstdest, flow_info** pfirstcoll,
                           uint32_t srcaddr, uint32_t dstaddr, uint32_t packets, uint32_t octets) nogil:
-        #TMP
-        #with gil:
-        #    print "addr: %s->%s"%(addr2str(srcaddr), addr2str(dstaddr))
-        # 
-        self._checksubrange(pfirstdest, self._root._fentry.first, srcaddr, dstaddr, packets, octets)
 
-    cdef int _checksubrange(self, flow_destination** pfirstdest, flow_entry* ent,
+        self._checksubrange(pfirstdest, pfirstcoll, self._root._fentry.first, srcaddr, dstaddr, packets, octets)
+
+    cdef int _checksubrange(self, flow_info** pfirstdest, flow_info** pfirstcoll, flow_entry* ent,
                             uint32_t srcaddr, uint32_t dstaddr, uint32_t packets, uint32_t octets) nogil:
         cdef flow_collection* coll
-        cdef flow_destination* dest
         cdef int res = 0
 
         while ent != NULL:
@@ -360,23 +410,15 @@ cdef class Receiver(object):
             if ((coll.minaddr <= srcaddr and coll.maxaddr >= srcaddr) or
                 (coll.minaddr <= dstaddr and coll.maxaddr >= dstaddr)):
                 if (ent.first == NULL or
-                    self._checksubrange(pfirstdest, ent.first, srcaddr, dstaddr, packets, octets) == 0):
+                    self._checksubrange(pfirstdest, pfirstcoll, ent.first, 
+                                        srcaddr, dstaddr, packets, octets) == 0):
 
-                    coll.packets += packets
-                    coll.octets += octets
-                    coll.flows += 1
+                    _inc_flow_info(pfirstcoll, cython.address(coll.info), packets, octets)
+                    
                     res += 1
-                    dest = ent.destaddr
-                    if dest.used == 0:
-                        dest.flowpacks += 1
-                        dest.next = pfirstdest[0]
-                        pfirstdest[0] = dest
-                    dest.used += 1
-                    #TMP
-                    #with gil:
-                    #    print "  adding %s"%(dest2str(dest))
-                    #                     
-
+                    
+                    _inc_flow_info(pfirstdest, cython.address(ent.destaddr.info), packets, octets)
+                    
             ent = ent.next
 
         return res

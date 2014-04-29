@@ -8,7 +8,7 @@ import tornado.web, os
 
 loc = os.path.normpath(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'web')))
 
-class DataHandler(tornado.web.RequestHandler):
+class StatHandler(tornado.web.RequestHandler):
     onstats = None
     
     def get(self):
@@ -17,17 +17,29 @@ class DataHandler(tornado.web.RequestHandler):
             self.write(self.onstats())
         else:
             self.write("")
+            
+class DestHandler(tornado.web.RequestHandler):
+    ondest = None
+    
+    def get(self):
+        destname = self.get_argument('name')
+        if self.ondest and destname:
+            self.write(self.ondest(destname))
+        else:
+            self.write("")
         
 class RootHandler(tornado.web.RequestHandler):
 
     def get(self):
         self.render('index.html')
 
-def setup(port, onstats):
-    DataHandler.onstats = onstats
+def setup(port, onstats, ondest):
+    StatHandler.onstats = onstats
+    DestHandler.ondest = ondest
     
     app = tornado.web.Application([
-                                   (r'/data', DataHandler),
+                                   (r'/data/stats', StatHandler),
+                                   (r'/data/dest', DestHandler),
                                    (r'/', RootHandler),                                   
                                    (r'/(index.html)', tornado.web.StaticFileHandler, {"path": loc}),
                                    (r'/ui/(.*)$', tornado.web.StaticFileHandler, {"path": os.path.join(loc, 'ui')}),

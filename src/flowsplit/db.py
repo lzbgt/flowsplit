@@ -10,7 +10,8 @@ import sqlalchemy.sql, pprint
 import flowsplit.logger as log
 
 def main():
-    dbcon = DBConnection('sergeys', '10.202.7.101', 5029)
+    #dbcon = DBConnection('sergeys', '10.202.7.101', 5029)
+    dbcon = DBConnection('sergeys', '199.71.142.8', 5029)
     
     res = dbcon.pullmap()
 
@@ -18,7 +19,11 @@ def main():
 #    dbcon.pushstat(datetime.datetime.utcnow().replace(tzinfo=tzutc), 'hello world')
     
     dbcon.close()
-    pprint.pprint(res)
+    #pprint.pprint(res)
+    
+    for mp, dst, desc in res:
+        if dst.startswith('199.71.143.120'):
+            print mp#, dst, desc
     
 class DBConnection(object):
     

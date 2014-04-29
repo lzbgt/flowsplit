@@ -86,19 +86,23 @@ cdef extern from "ipfix.h":
         int dst_mask
         int pad2
         
+    cdef struct flow_info:
+        flow_info*  next
+        long        flowpacks
+        long        packets
+        long        octets
+        long        flows
+        long        used
+        
     cdef struct flow_collection:
+        flow_info    info
         long         minaddr
         long         maxaddr
-        long         packets
-        long         octets
-        long         flows
 
     cdef struct flow_destination:
-        sockaddr_in         addr
-        long                flowpacks
-        long                used
-        flow_destination*   next
-    
+        flow_info    info
+        sockaddr_in  addr
+
     cdef struct flow_entry:    
         flow_entry*         next
         flow_entry*         first

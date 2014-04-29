@@ -3,13 +3,13 @@ function Splitter (){
 	
 	self.load = function load() {
 		$.ajax({
-			  url: '/data',
+			  url: '/data/stats',
 			  cache: false,
 			  async   : true,
 			  success: function(data) {
 					self.ondata(data);
 			  }
-		});		
+		});
 	}
 	function addRow(tab, txt, val) {
 		var row = $('<tr></tr>');
@@ -96,6 +96,42 @@ function Splitter (){
 		}
 	}
 
+    var seldst = null;
+
+    function onmarks(data) {
+        var mskcont = $('#mskcont');
+        mskcont.empty();
+		var tab = mktable(data.name, ['Subnet', 'flow pkts', 'flows', 'packets', 'octets'])
+		mskcont.append(tab);
+		for ( var idx = 0; idx < data.stats.length; idx++) {
+			var stat = data.stats[idx];
+			var st = stat[2];
+			var row = $('<tr></tr>');
+			tab.append(row);
+			addCell(row, st.name);
+			addNum(row, st.flowpackets);
+			addNum(row, st.flows);
+			addNum(row, st.packets);
+			addNum(row, st.octets);
+		}
+	}
+    function ondest(ev) {
+    	if(seldst){
+    		seldst.removeClass('seldst');
+    	}
+    	seldst = $(ev.currentTarget);
+    	seldst.addClass('seldst');
+		var destname = $(ev.currentTarget.firstChild).text();
+		$.ajax({
+			  url: '/data/dest?name='+destname,
+			  cache: false,
+			  async   : true,
+			  success: function(data) {
+				  onmarks(data);
+			  }
+		});
+	}
+    
 	self.ondata = function ondata(data) {
 		var tmcont = $('#timecont');
 		var tab = $('<table/>');
@@ -126,14 +162,19 @@ function Splitter (){
 		}
 
 		var dstcont = $('#dstcont');
-		var tab = mktable('Destinations', ['address', 'packets'])
-		dstcont.append(tab);		
+		var tab = mktable('Destinations', ['address', 'flow pkts', 'flows', 'packets', 'octets'])
+		dstcont.append(tab);
 		for ( var idx in data.destinations) {
 			var dst = data.destinations[idx];
 			var row = $('<tr></tr>');
+			row.addClass('dstrow');
 			tab.append(row);
 			addCell(row, dst.address);
-			addNum(row, dst.packets);
+			addNum(row, dst.stats.flowpackets);
+			addNum(row, dst.stats.flows);
+			addNum(row, dst.stats.packets);
+			addNum(row, dst.stats.octets);
+			row.click(ondest);
 		}
 	}
 }

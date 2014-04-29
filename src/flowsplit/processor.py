@@ -181,7 +181,7 @@ class Receiver(object):
         loop.add_handler(sock.fileno(), self._recv, loop.READ)
         
         if wport:
-            flowsplit.web.setup(wport, self._onstatus)
+            flowsplit.web.setup(wport, self._onstatus, self._ondeststat)
 
     def _parsemap(self, records):
         mgroup = []
@@ -263,3 +263,14 @@ class Receiver(object):
         if self._dbconn: self._dblogger(msg)
             
         self._loop.start()
+        
+    def _ondeststat(self, nm):
+        dest = self.root.dests().get(nm, None)
+        ents = self.root.entries()
+        res = []
+        for ek, ent in ents.items():
+            mn, mx, dst = ek
+            if dst != dest: continue
+            res.append((mn, mx, ent.stats()))
+        return {'name':nm, 'stats':res}
+    

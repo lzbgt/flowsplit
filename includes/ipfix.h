@@ -40,12 +40,21 @@ typedef struct PACKED ipv5_flow {
 	uint16_t pad2;				// Unused (zero) bytes
 } ipv5_flow_t;
 
-typedef struct PACKED flow_collection {
-	uint32_t 			minaddr;
-	uint32_t 			maxaddr;
+typedef struct PACKED flow_info flow_info_t;
+
+struct PACKED flow_info {
+	flow_info_t*		next;
+	uint64_t 			flowpacks;
 	uint64_t 			packets;
 	uint64_t 			octets;
 	uint64_t 			flows;
+	uint32_t			used;
+};
+
+typedef struct PACKED flow_collection {
+	flow_info_t			info;
+	uint32_t 			minaddr;
+	uint32_t 			maxaddr;
 } flow_collection_t;
 
 typedef struct PACKED flow_entry flow_entry_t;
@@ -60,10 +69,8 @@ struct PACKED flow_entry {
 };
 
 struct PACKED flow_destination {
+	flow_info_t			info;
 	struct sockaddr_in 	addr;
-	uint64_t 			flowpacks;
-	uint32_t			used;
-	flow_destination_t* next;
 };
 
 struct PACKED flow_source {
