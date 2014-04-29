@@ -112,6 +112,11 @@ function Splitter (){
     	return {'post':'', 'scale':1};
     }
     
+    function addLargeNum(row, scale, count) {
+    	var cell = addNum(row, (scale == 1)? count : Math.round((count/scale)*10)/10);
+    	cell.attr('title', count);
+    }
+    
     function onmarks(data) {
         var mskcont = $('#mskcont');
         mskcont.empty();
@@ -134,8 +139,8 @@ function Splitter (){
 			addCell(row, st.name);
 			addNum(row, st.flowpackets);
 			addNum(row, st.flows);
-			addNum(row, (pktscale.scale == 1)? st.packets : Math.round((st.packets/pktscale.scale)*10)/10);
-			addNum(row, (octscale.scale == 1)? st.octets : Math.round((st.octets/octscale.scale)*10)/10);
+			addLargeNum(row, pktscale.scale, st.packets);
+			addLargeNum(row, octscale.scale, st.octets);
 		}
 	}
     function ondest(ev) {
@@ -203,8 +208,8 @@ function Splitter (){
 			addCell(row, dst.address);
 			addNum(row, dst.stats.flowpackets);
 			addNum(row, dst.stats.flows);
-			addNum(row, (pktscale.scale == 1)? dst.stats.packets : Math.round((dst.stats.packets/pktscale.scale)*10)/10);
-			addNum(row, (octscale.scale == 1)? dst.stats.octets : Math.round((dst.stats.octets/octscale.scale)*10)/10);
+			addLargeNum(row, pktscale.scale, dst.stats.packets);
+			addLargeNum(row, octscale.scale, dst.stats.octets);
 			row.click(ondest);
 		}
 	}
