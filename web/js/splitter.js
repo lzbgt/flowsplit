@@ -99,7 +99,9 @@ function Splitter (){
     var seldst = null;
 
     function scalevalue(mx, b){
-    	var res = {'post':'', 'scale':1};
+    	if(mx > Math.pow(2, 50)){
+    		return {'post':', T'+b, 'scale':Math.pow(2, 40)};
+    	}    	
     	if(mx > Math.pow(2, 40)){
     		return {'post':', G'+b, 'scale':Math.pow(2, 30)};
     	}
