@@ -113,7 +113,7 @@ function Splitter (){
     }
     
     function addLargeNum(row, scale, count) {
-    	var cell = addNum(row, (scale == 1)? count : Math.round((count/scale)*10)/10);
+    	var cell = addNum(row, (scale == 1)? count : (count/scale).toFixed(1));
     	cell.attr('title', count);
     }
     
