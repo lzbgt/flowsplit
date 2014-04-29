@@ -98,10 +98,33 @@ function Splitter (){
 
     var seldst = null;
 
+    function scale(mx){
+    	var res = {'post':'', 'scale':1};
+    	if(mx > Math.pow(2, 40)){
+    		return {'post':', G', 'scale':Math.pow(2, 30)};
+    	}
+    	if(mx > Math.pow(2, 30)){
+    		return {'post':', M', 'scale':Math.pow(2, 20)};
+    	}
+    	if(mx > Math.pow(2, 20)){
+    		return {'post':', K', 'scale':Math.pow(2, 10)};
+    	}
+    	return {'post':'', 'scale':1};
+    }
+    
     function onmarks(data) {
         var mskcont = $('#mskcont');
         mskcont.empty();
-		var tab = mktable(data.name, ['Subnet', 'flow pkts', 'flows', 'packets', 'octets'])
+        var mxpackets = 0, mxoctets = 0;
+		for ( var idx = 0; idx < data.stats.length; idx++) {
+			var stat = data.stats[idx];
+			var st = stat[2];
+			if (mxpackets < st.packets) mxpackets = st.packets;
+			if (mxoctets < st.octets) mxoctets = st.octets;
+		}
+		var pktscale = scale(mxpackets);
+		var octscale = scale(mxoctets);
+		var tab = mktable(data.name, ['Subnet', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		mskcont.append(tab);
 		for ( var idx = 0; idx < data.stats.length; idx++) {
 			var stat = data.stats[idx];
@@ -111,8 +134,8 @@ function Splitter (){
 			addCell(row, st.name);
 			addNum(row, st.flowpackets);
 			addNum(row, st.flows);
-			addNum(row, st.packets);
-			addNum(row, st.octets);
+			addNum(row, (pktscale.scale == 1)? st.packets : Math.round((st.packets/pktscale.scale)*10)/10);
+			addNum(row, (octscale.scale == 1)? st.octets : Math.round((st.octets/octscale.scale)*10)/10);
 		}
 	}
     function ondest(ev) {
@@ -162,7 +185,15 @@ function Splitter (){
 		}
 
 		var dstcont = $('#dstcont');
-		var tab = mktable('Destinations', ['address', 'flow pkts', 'flows', 'packets', 'octets'])
+        var mxpackets = 0, mxoctets = 0;
+        for ( var idx in data.destinations) {
+			var dst = data.destinations[idx];
+			if (mxpackets < dst.stats.packets) mxpackets = dst.stats.packets;
+			if (mxoctets < dst.stats.octets) mxoctets = dst.stats.octets;
+		}
+		var pktscale = scale(mxpackets);
+		var octscale = scale(mxoctets);
+		var tab = mktable('Destinations', ['address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		dstcont.append(tab);
 		for ( var idx in data.destinations) {
 			var dst = data.destinations[idx];
@@ -172,8 +203,8 @@ function Splitter (){
 			addCell(row, dst.address);
 			addNum(row, dst.stats.flowpackets);
 			addNum(row, dst.stats.flows);
-			addNum(row, dst.stats.packets);
-			addNum(row, dst.stats.octets);
+			addNum(row, (pktscale.scale == 1)? dst.stats.packets : Math.round((dst.stats.packets/pktscale.scale)*10)/10);
+			addNum(row, (octscale.scale == 1)? dst.stats.octets : Math.round((dst.stats.octets/octscale.scale)*10)/10);
 			row.click(ondest);
 		}
 	}
