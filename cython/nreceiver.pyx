@@ -39,6 +39,13 @@ cdef void _inc_flow_info(flow_info** pfirst, flow_info* info, uint32_t packets, 
     info.flows += 1
     info.used += 1
 
+@cython.boundscheck(False)
+cdef reportinfo(const flow_info* info):
+    return {'flowpackets':<uint64_t>info.flowpacks, 
+            'packets':<uint64_t>info.packets, 
+            'octets':<uint64_t>info.octets, 
+            'flows':<uint64_t>info.flows}
+
 cdef class Destination(object):
     cdef flow_destination _dest
     cdef _dsthost
@@ -55,9 +62,7 @@ cdef class Destination(object):
         return "%s:%d"%(self._dsthost, self._port)
     
     def stats(self):
-        cdef flow_info* info = cython.address(self._dest.info)
-
-        return {'flowpackets':info.flowpacks, 'packets':info.packets, 'octets':info.octets, 'flows':info.flows}
+        return reportinfo(cython.address(self._dest.info))
     
 cdef class Entry(object):
     cdef Entry _parent
@@ -81,8 +86,6 @@ cdef class Entry(object):
         return "[%s:%s] -> %s"%(addr2str(coll.minaddr), addr2str(coll.maxaddr), self._dest.getinfo())
     
     def stats(self):
-        cdef flow_info* info = cython.address(self._fentry.coll.info)
-        
         cdef nm = addr2str(self._fentry.coll.minaddr)
         cdef uint32_t diff = (self._fentry.coll.maxaddr - self._fentry.coll.minaddr)
         cdef int bits = 0
@@ -91,7 +94,9 @@ cdef class Entry(object):
             bits += 1
         nm += '/%d'%(32-bits)
 
-        return {'name':nm, 'flowpackets':info.flowpacks, 'packets':info.packets, 'octets':info.octets, 'flows':info.flows}
+        cdef rep = reportinfo(cython.address(self._fentry.coll.info))
+        rep['name'] = nm
+        return rep
     
     def attach(self, Entry ent):
         cdef Entry prevparent = ent._parent
@@ -362,6 +367,9 @@ cdef class Receiver(object):
             counters.broken += 1
             return # broken packet
         
+        cdef uint16_t mult = header.sampling_interval & 0x3FFF
+        if mult == 0: mult = 1
+        
         self._sources.check(iph.saddr, ntohl(header.flow_sequence), count)
         
         for num in range(count):
@@ -369,7 +377,7 @@ cdef class Receiver(object):
 
             self._checkrange(cython.address(destinfo), cython.address(collinfo),
                              ntohl(flow.srcaddr), ntohl(flow.dstaddr), 
-                             ntohl(flow.dPkts), ntohl(flow.dOctets))
+                             ntohl(flow.dPkts)*mult, ntohl(flow.dOctets)*mult)
 
         while collinfo != NULL:
             collinfo = _reset_flow_info(collinfo)
