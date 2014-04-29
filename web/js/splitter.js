@@ -98,16 +98,19 @@ function Splitter (){
 
     var seldst = null;
 
-    function scale(mx){
+    function scalevalue(mx, b){
     	var res = {'post':'', 'scale':1};
     	if(mx > Math.pow(2, 40)){
-    		return {'post':', G', 'scale':Math.pow(2, 30)};
+    		return {'post':', G'+b, 'scale':Math.pow(2, 30)};
     	}
     	if(mx > Math.pow(2, 30)){
-    		return {'post':', M', 'scale':Math.pow(2, 20)};
+    		return {'post':', M'+b, 'scale':Math.pow(2, 20)};
     	}
     	if(mx > Math.pow(2, 20)){
-    		return {'post':', K', 'scale':Math.pow(2, 10)};
+    		return {'post':', K'+b, 'scale':Math.pow(2, 10)};
+    	}
+    	if(b){
+    		return {'post':', '+b, 'scale':1};
     	}
     	return {'post':'', 'scale':1};
     }
@@ -127,8 +130,8 @@ function Splitter (){
 			if (mxpackets < st.packets) mxpackets = st.packets;
 			if (mxoctets < st.octets) mxoctets = st.octets;
 		}
-		var pktscale = scale(mxpackets);
-		var octscale = scale(mxoctets);
+		var pktscale = scalevalue(mxpackets, '');
+		var octscale = scalevalue(mxoctets, 'B');
 		var tab = mktable(data.name, ['Subnet', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		mskcont.append(tab);
 		for ( var idx = 0; idx < data.stats.length; idx++) {
@@ -196,8 +199,8 @@ function Splitter (){
 			if (mxpackets < dst.stats.packets) mxpackets = dst.stats.packets;
 			if (mxoctets < dst.stats.octets) mxoctets = dst.stats.octets;
 		}
-		var pktscale = scale(mxpackets);
-		var octscale = scale(mxoctets);
+		var pktscale = scalevalue(mxpackets, '');
+		var octscale = scalevalue(mxoctets, 'B');
 		var tab = mktable('Destinations', ['address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		dstcont.append(tab);
 		for ( var idx in data.destinations) {
