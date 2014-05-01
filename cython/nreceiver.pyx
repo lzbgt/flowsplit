@@ -250,6 +250,7 @@ cdef class Sources(object):
                         'activity':src.activity,
                         'total':src.total+src.activity,
                         'active':(src.inactive < self._num),
+                        'sequence':src.seq,
                         'ooscount':src.ooscount})
         return lst
 

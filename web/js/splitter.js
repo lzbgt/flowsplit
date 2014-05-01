@@ -191,7 +191,8 @@ function Splitter (){
 			addNum(row, src.total);
 			addNum(row, src.ooscount);
 			addNum(row, src.activity);
-			addCell(row, (src.active == true)?mktxt('active', 'actvcls'):mktxt('inactive', 'inactcls'));
+			var cell = addCell(row, (src.active == true)?mktxt('active', 'actvcls'):mktxt('inactive', 'inactcls'));
+			cell.attr('title', src.sequence);
 		}
 
 		var dstcont = $('#dstcont');
