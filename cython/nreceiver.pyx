@@ -247,11 +247,11 @@ cdef class Sources(object):
         for pos in range(self._size):
             src = self._sources+pos
             lst.append({'address':addr2str(ntohl(src.address)),
-                        'activity':src.activity,
-                        'total':src.total+src.activity,
+                        'activity':<uint64_t>src.activity,
+                        'total':<uint64_t>(src.total+src.activity),
                         'active':(src.inactive < self._num),
-                        'sequence':src.seq,
-                        'ooscount':src.ooscount})
+                        'sequence':<uint32_t>src.seq,
+                        'ooscount':<uint64_t>src.ooscount})
         return lst
 
 @cython.boundscheck(False)
@@ -304,14 +304,14 @@ cdef class Receiver(object):
         for dest in self._root.dests().values():
             destinations.append({'address':dest.getinfo(), 'stats':dest.stats()})
         
-        return {'flows':{'current':{'all':curr.all, 
-                                    'broken':curr.broken, 
-                                    'dropped':curr.dropped,
-                                    'other':curr.other},
-                         'total':{'all':tot.all+curr.all, 
-                                  'broken':tot.broken+curr.broken, 
-                                  'dropped':tot.dropped+curr.dropped,
-                                  'other':tot.other+curr.other}},
+        return {'flows':{'current':{'all':<uint64_t>curr.all,
+                                    'broken':<uint64_t>curr.broken, 
+                                    'dropped':<uint64_t>curr.dropped,
+                                    'other':<uint64_t>curr.other},
+                         'total':{'all':<uint64_t>(tot.all+curr.all), 
+                                  'broken':<uint64_t>(tot.broken+curr.broken), 
+                                  'dropped':<uint64_t>(tot.dropped+curr.dropped),
+                                  'other':<uint64_t>(tot.other+curr.other)}},
                 'sources':self._sources.stats(),
                 'destinations':destinations}
         

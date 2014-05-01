@@ -189,10 +189,10 @@ function Splitter (){
 			tab.append(row);
 			addCell(row, src.address);
 			addNum(row, src.total);
-			addNum(row, src.ooscount);
-			addNum(row, src.activity);
-			var cell = addCell(row, (src.active == true)?mktxt('active', 'actvcls'):mktxt('inactive', 'inactcls'));
+			var cell = addNum(row, src.ooscount);
 			cell.attr('title', src.sequence);
+			addNum(row, src.activity);
+			addCell(row, (src.active == true)?mktxt('active', 'actvcls'):mktxt('inactive', 'inactcls'));
 		}
 
 		var dstcont = $('#dstcont');
