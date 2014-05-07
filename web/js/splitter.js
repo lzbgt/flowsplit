@@ -154,7 +154,7 @@ function Splitter (){
     	}
     	seldst = $(ev.currentTarget);
     	seldst.addClass('seldst');
-		var destname = $(ev.currentTarget.firstChild).text();
+		var destname = $(ev.currentTarget.firstChild).next().text();
 		$.ajax({
 			  url: '/data/dest?name='+destname,
 			  cache: false,
@@ -205,7 +205,7 @@ function Splitter (){
 		}
 		var pktscale = scalevalue(mxpackets, '');
 		var octscale = scalevalue(mxoctets, 'B');
-		var tab = mktable('Destinations', ['id', 'address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
+		var tab = mktable('FA Instances', ['id', 'address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		dstcont.append(tab);
 		for ( var idx in data.destinations) {
 			var dst = data.destinations[idx];
