@@ -181,12 +181,13 @@ function Splitter (){
 		addinput(tab, 'current', data.flows.current);
 
 		var srccont = $('#srccont');
-		var tab = mktable('Sources', ['address', 'total', 'bad seq', 'activity', 'state'])
+		var tab = mktable('Sources', ['id', 'address', 'total', 'bad seq', 'activity', 'state'])
 		srccont.append(tab);
 		for ( var idx in data.sources) {
 			var src = data.sources[idx];
 			var row = $('<tr></tr>');
 			tab.append(row);
+			addCell(row, '['+(parseInt(idx)+1).toString()+ '] ');
 			addCell(row, src.address);
 			addNum(row, src.total);
 			var cell = addNum(row, src.ooscount);
@@ -204,13 +205,14 @@ function Splitter (){
 		}
 		var pktscale = scalevalue(mxpackets, '');
 		var octscale = scalevalue(mxoctets, 'B');
-		var tab = mktable('Destinations', ['address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
+		var tab = mktable('Destinations', ['id', 'address', 'flow pkts', 'flows', 'packets'+pktscale.post, 'octets'+octscale.post])
 		dstcont.append(tab);
 		for ( var idx in data.destinations) {
 			var dst = data.destinations[idx];
 			var row = $('<tr></tr>');
 			row.addClass('dstrow');
 			tab.append(row);
+			addCell(row, '['+(parseInt(idx)+1).toString()+ '] ');
 			addCell(row, dst.address);
 			addNum(row, dst.stats.flowpackets);
 			addNum(row, dst.stats.flows);
